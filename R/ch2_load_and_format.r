@@ -65,4 +65,45 @@ ch2_load_and_format <- function(){
   # #Filter out set_times with nchar == 2
   # rem2 <- which(nchar(wc_data$set_time) == 2)
   # wc_data[rem2, c('set_time', 'up_time', 'duration')]
+  
+  #--------------------------------------------------------------------------------
+  ##Calculate tow durations in minutes and seconds
+
+  ##assign dates and times
+  wc_data <- plyr::rename(wc_data, c('towdate' = 'set_date'))
+  wc_data$set_date <- dmy(wc_data$set_date)
+  wc_data$up_date <- wc_data$set_date
+
+  wc_data[which(wc_data$set_time >= wc_data$up_time), 'up_date'] <- wc_data[which(wc_data$set_time >= 
+    wc_data$up_time), 'up_date'] + days(1)
+
+  wc_data$set_time <- as.character(wc_data$set_time)
+  wc_data$up_time <- as.character(wc_data$up_time)
+
+  #Paste colon between hour and minutes
+  wc_data$up_time <- paste(substr(wc_data$up_time, nchar(wc_data$up_time) - 3, nchar(wc_data$up_time) - 2),
+                         substr(wc_data$up_time, nchar(wc_data$up_time) - 1, nchar(wc_data$up_time)), sep = ':')
+  wc_data[which(nchar(wc_data$up_time) == 3), 'up_time'] <- paste0('0', 
+    wc_data[which(nchar(wc_data$up_time) == 3), 'up_time'])
+  wc_data$set_time <- paste(substr(wc_data$set_time, nchar(wc_data$set_time) - 3, nchar(wc_data$set_time) - 2),
+                         substr(wc_data$set_time, nchar(wc_data$set_time) - 1, nchar(wc_data$set_time)), sep = ':')
+  wc_data[which(nchar(wc_data$set_time) == 3), 'set_time'] <- paste0('0', 
+    wc_data[which(nchar(wc_data$set_time) == 3), 'set_time'])
+
+  #convert to year month date, hour minute formats
+  wc_data$set_date_full <- ymd_hm(paste(wc_data$set_date, wc_data$set_time))
+  wc_data$up_date_full <- ymd_hm(paste(wc_data$up_date, wc_data$up_time))
+
+  #Calculate durations in minutes and hours
+  wc_data$duration_min <- interval(wc_data$set_date_full, wc_data$up_date_full) / dminutes(1)
+  wc_data$duration_hour <- interval(wc_data$set_date_full, wc_data$up_date_full) / dhours(1)
+
+
+  #--------------------------------------------------------------------------------
+  #Calculate distances between start and end points (assuming linearity)
+
+  #Add direction
+  wc_data$tow_direction <- paste0(ifelse(wc_data$set_lat >= wc_data$up_lat, 'S', 'N'),
+                                  ifelse(wc_data$set_long >= wc_data$up_long, 'E', 'W'))
+
   }
