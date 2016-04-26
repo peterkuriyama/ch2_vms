@@ -6,241 +6,62 @@ library(plyr)
 library(dplyr)
 library(lubridate)
 
-#--------------------------------------------------------------------------------
-#Load Data through 2015
-load("data/LBKDATA_Barnett_Logbook_Data_2002_2014_2015-11-24.Rda")
+funcs <- list.files('R')
+sapply(funcs, FUN = function(x) source(paste0('R/', x)))
 
-wc_data <- LBK.out
-names(wc_data) <- tolower(names(wc_data))
+#Takes 45 seconds to run
+wc_data <- ch2_load_and_format()
 
-#Remove certain columns 
-to_remove <- c("block_or", "latlong_type", "ch_lat", "ch_long", "up_area", 
-      "up_arid_psmfc", "up_block", "up_block_or", "up_ch_lat", "up_ch_long",
-      "depth_type2", "ps_grnd_code", "catchsource", 
-      "ftid6", "ticket_date", "ftsource", 
-      "tripwarning", "towwarning", "catchwarning", "rel")
-wc_data <- wc_data[, which(names(wc_data) %in% to_remove == FALSE)]
+#Convert lat/lon degrees to radians
+wc_data$set_lat_r <- deg2rad(wc_data$set_lat)
+wc_data$set_long_r <- deg2rad(wc_data$set_long)
+wc_data$up_lat_r <- deg2rad(wc_data$up_lat)
+wc_data$up_long_r <- deg2rad(wc_data$up_long)
 
-#Convert factor columns to character
-factor_cols <- which(sapply(wc_data, FUN = is.factor))
+wc_data %>% rowwise() %>% 
+  mutate(dist_slc_km = gcd_slc(set_long_r, set_lat_r, up_long_r, up_lat_r),
+         dist_hf_km = gcd_hf(set_long_r, set_lat_r, up_long_r, up_lat_r)) %>%
+  as.data.frame -> wc_data
 
-for(fff in 1:length(factor_cols)){
-  ind <- factor_cols[fff]
-  # print(ind)
-  wc_data[, ind] <- as.character(wc_data[, ind])
-  # wc_data[, fff] <- as
-}
+wc_data$dist_slc_mi <- wc_data$dist_slc_km * 0.621371
+wc_data$mph <- wc_data$dist_slc_mi / (wc_data$duration_min / 60)
 
-#Parse towdate
-wc_data$tow_day <- substr(wc_data$towdate, 1, 2)
-wc_data$tow_month <- substr(wc_data$towdate, 4, 6)
-wc_data$tow_year <- substr(wc_data$towdate, 8, 12)
+too_fast_inds <- which(wc_data$mph > 5)
+too_fast <- wc_data[too_fast_inds, ]
+
+#Remove tows that are too fast
+wc_data <- wc_data[-too_fast_inds, ]
 
 #--------------------------------------------------------------------------------
-# #Filter out set_times that are NA
-nas <- apply(wc_data[, c('set_long', 'set_lat', 'up_long', 'up_lat', 'set_time')],
-  FUN = function(x) which(is.na(x)), MARGIN = 2)
-nas <- unlist(nas)
-names(nas) <- NULL
+wc_data %>% distinct(drvid, tow_month, tow_day, tow_year, mph) %>%
+  group_by(tow_year) %>% summarise(tot_min = sum(duration_min, na.rm = TRUE)) -> sum_effort
 
-head(wc_data[nas, c('set_long', 'set_lat', 'up_long', 'up_lat', 'set_time')])
-
-nas <- c(which(is.na(wc_data$set_time)),
-         which(is.na(wc_data$set_long)))
-
-# removals <- rbind(removals, c('set_times are NA', length(nas), 
-#   removals$nrow_end, removals$nrow_end - length(nas)))
-wc_data <- wc_data[-nas, ]
-
-#Filter out hake tows
-wc_data %>% group_by(haul_id) %>% summarise(nspecies = length(unique(spc.name)),
-  hake = ifelse("PACIFIC WHITING" %in% unique(common.name), 1, 0)) -> cccc
-hake_tow_ids <- subset(cccc, hake == 1)
-hake_tows <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id)
-
-#Remove hake rows
-wc_data <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id == FALSE)
-
-#Filter out certain data
-#Filter out set_times with nchar == 1
-# removals <- data.frame('desc' = 1, 'nremoved' = 1, 'nrow_start' = nrow(wc_data), 'nrow_end' = 1)
-# removals$desc <- 'rows that have nchar(set_time) == 1'
-# removals$nremoved = length(which(nchar(wc_data$set_time) == 1))
-# wc_data <- wc_data[-which(nchar(wc_data$set_time) == 1), ]
-# removals$nrow_end <- nrow(wc_data)
-
-# #Filter out set_times with nchar == 2
-# rem2 <- which(nchar(wc_data$set_time) == 2)
-# wc_data[rem2, c('set_time', 'up_time', 'duration')]
-
-#--------------------------------------------------------------------------------
-##Calculate tow durations in minutes and seconds
-
-##assign dates and times
-wc_data <- plyr::rename(wc_data, c('towdate' = 'set_date'))
-wc_data$set_date <- dmy(wc_data$set_date)
-wc_data$up_date <- wc_data$set_date
-
-wc_data[which(wc_data$set_time >= wc_data$up_time), 'up_date'] <- wc_data[which(wc_data$set_time >= 
-  wc_data$up_time), 'up_date'] + days(1)
-
-wc_data$set_time <- as.character(wc_data$set_time)
-wc_data$up_time <- as.character(wc_data$up_time)
-
-#Paste colon between hour and minutes
-wc_data$up_time <- paste(substr(wc_data$up_time, nchar(wc_data$up_time) - 3, nchar(wc_data$up_time) - 2),
-                       substr(wc_data$up_time, nchar(wc_data$up_time) - 1, nchar(wc_data$up_time)), sep = ':')
-wc_data[which(nchar(wc_data$up_time) == 3), 'up_time'] <- paste0('0', 
-  wc_data[which(nchar(wc_data$up_time) == 3), 'up_time'])
-wc_data$set_time <- paste(substr(wc_data$set_time, nchar(wc_data$set_time) - 3, nchar(wc_data$set_time) - 2),
-                       substr(wc_data$set_time, nchar(wc_data$set_time) - 1, nchar(wc_data$set_time)), sep = ':')
-wc_data[which(nchar(wc_data$set_time) == 3), 'set_time'] <- paste0('0', 
-  wc_data[which(nchar(wc_data$set_time) == 3), 'set_time'])
-
-#convert to year month date, hour minute formats
-wc_data$set_date_full <- ymd_hm(paste(wc_data$set_date, wc_data$set_time))
-wc_data$up_date_full <- ymd_hm(paste(wc_data$up_date, wc_data$up_time))
-
-#Calculate durations in minutes and hours
-wc_data$duration_min <- interval(wc_data$set_date_full, wc_data$up_date_full) / dminutes(1)
-wc_data$duration_hour <- interval(wc_data$set_date_full, wc_data$up_date_full) / dhours(1)
+plot()
 
 
-#--------------------------------------------------------------------------------
-#Calculate distances between start and end points (assuming linearity)
+ttt <- subset(tow_time_unq, drvid == '1037785')
+plot(ttt$tow_year, ttt$tot_min, type = 'b', pch = 19, ylim = c(0, 70000))
 
-#Add direction
-wc_data$tow_direction <- paste0(ifelse(wc_data$set_lat >= wc_data$up_lat, 'S', 'N'),
-                                ifelse(wc_data$set_long >= wc_data$up_long, 'E', 'W'))
+plot(tow_time_unq$tow_year, tow_time_u)
 
-#--------------------------------------------------------------------------------
+
+
+#Evaluate Time spent trawling
+wc_data %>% group_by(drvid, tow_year) %>% summarise(tot_min = sum(duration_min, 
+  na.rm = TRUE)) -> tow_time
+
+ttt <- subset(tow_time, drvid == 1037785)
+plot(ttt$tow_year, ttt$tot_min)
+
+ggplot(tow_time, aes(x = tow_year, y = tot_min, group = drvid)) + geom_line(aes(colour = drvid)) 
+
+
+
+
+
+
 #Start HERE
 #--------------------------------------------------------------------------------
-
-# Calculates the geodesic distance between two points specified by radian latitude/longitude using the
-# Spherical Law of Cosines (slc)
-gcd.slc <- function(long1, lat1, long2, lat2) {
-  R <- 6371 # Earth mean radius [km]
-  d <- acos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2) * cos(long2-long1)) * R
-  return(d) # Distance in km
-}
-
-gcd.hf <- function(long1, lat1, long2, lat2) {
-  R <- 6371 # Earth mean radius [km]
-  delta.long <- (long2 - long1)
-  delta.lat <- (lat2 - lat1)
-  a <- sin(delta.lat/2)^2 + cos(lat1) * cos(lat2) * sin(delta.long/2)^2
-  c <- 2 * asin(min(1,sqrt(a)))
-  d = R * c
-  return(d) # Distance in km
-}
-
-gcd.vif <- function(long1, lat1, long2, lat2) {
- 
-  # WGS-84 ellipsoid parameters
-  a <- 6378137         # length of major axis of the ellipsoid (radius at equator)
-  b <- 6356752.314245  # ength of minor axis of the ellipsoid (radius at the poles)
-  f <- 1/298.257223563 # flattening of the ellipsoid
- 
-  L <- long2-long1 # difference in longitude
-  U1 <- atan((1-f) * tan(lat1)) # reduced latitude
-  U2 <- atan((1-f) * tan(lat2)) # reduced latitude
-  sinU1 <- sin(U1)
-  cosU1 <- cos(U1)
-  sinU2 <- sin(U2)
-  cosU2 <- cos(U2)
- 
-  cosSqAlpha <- NULL
-  sinSigma <- NULL
-  cosSigma <- NULL
-  cos2SigmaM <- NULL
-  sigma <- NULL
- 
-  lambda <- L
-  lambdaP <- 0
-  iterLimit <- 100
-  while (abs(lambda-lambdaP) > 1e-12 & iterLimit>0) {
-    sinLambda <- sin(lambda)
-    cosLambda <- cos(lambda)
-    sinSigma <- sqrt( (cosU2*sinLambda) * (cosU2*sinLambda) +
-                      (cosU1*sinU2-sinU1*cosU2*cosLambda) * (cosU1*sinU2-sinU1*cosU2*cosLambda) )
-    if (sinSigma==0) return(0)  # Co-incident points
-    cosSigma <- sinU1*sinU2 + cosU1*cosU2*cosLambda
-    sigma <- atan2(sinSigma, cosSigma)
-    sinAlpha <- cosU1 * cosU2 * sinLambda / sinSigma
-    cosSqAlpha <- 1 - sinAlpha*sinAlpha
-    cos2SigmaM <- cosSigma - 2*sinU1*sinU2/cosSqAlpha
-    if (is.na(cos2SigmaM)) cos2SigmaM <- 0  # Equatorial line: cosSqAlpha=0
-    C <- f/16*cosSqAlpha*(4+f*(4-3*cosSqAlpha))
-    lambdaP <- lambda
-    lambda <- L + (1-C) * f * sinAlpha *
-              (sigma + C*sinSigma*(cos2SigmaM+C*cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)))
-    iterLimit <- iterLimit - 1
-  }
-  if (iterLimit==0) return(NA)  # formula failed to converge
-  uSq <- cosSqAlpha * (a*a - b*b) / (b*b)
-  A <- 1 + uSq/16384*(4096+uSq*(-768+uSq*(320-175*uSq)))
-  B <- uSq/1024 * (256+uSq*(-128+uSq*(74-47*uSq)))
-  deltaSigma = B*sinSigma*(cos2SigmaM+B/4*(cosSigma*(-1+2*cos2SigmaM^2) -
-                                      B/6*cos2SigmaM*(-3+4*sinSigma^2)*(-3+4*cos2SigmaM^2)))
-  s <- b*A*(sigma-deltaSigma) / 1000
- 
-  return(s) # Distance in km
-}
-
-deg2rad <- function(deg) return(deg*pi/180)
-
-check1 <- wc_data[1, c('set_lat', 'set_long', 'up_lat', 'up_long')]
-check <- sapply(check1, FUN = deg2rad)
-
-gcd.slc(check[2], -check[1], check[4], -check[3])
-gcd.vif(check[2], -check[1], check[4], -check[3])
-gcd.hf(check[2], -check[1], check[4], -check[3])
-
-
-check[1]
-
-
-
-
-deg2hms(47.7517, sep = ':')
-
-
-apply(check, FUN = deg2hms, MARGIN = 1)
-
-lon2 <- -check$up_long
-lon1 <- -check$set_long
-lat2 <- check$up_lat
-lat1 <- check$set_lat
-
-dlon <- lon2 - lon1
-dlat <- lat2 - lat1
-
-aa <- (sin(dlat / 2)) ^ 2 + cos(lat1) * cos(lat2) * (sin(dlon / 2)) ^ 2
-cc <- 2 * atan2(sqrt(aa), sqrt(1 - aa))
-3961 * cc
-
-#4.744 miles, 7.633 km
-4.744 / 1.83
-4.744 / (110 / 60)
-
-
-
-#Haversine Distance Formula
-diff_long <- wc_data$up_long - wc_data$set_long
-diff_lat <- wc_data$up_lat - wc_data$set_lat
-aa <- (sin(diff_lat / 2)) ^ 2 + cos(-wc_data$set_long) * cos(-wc_data$up_long) * 
-  (sin(diff_long / 2)) ^ 2
-cc <- 2 * atan2(sqrt(aa), sqrt(1 - aa))
-dd <- 
-
-
-a = (sin(dlat/2))^2 + cos(lat1) * cos(lat2) * (sin(dlon/2))^2 
-c = 2 * atan2( sqrt(a), sqrt(1-a) ) 
-d = R * c (where R is the radius of the Earth)
-
-
-
 
 
 #convert longitudes to be in latitude units (Branch et al. 2005)
@@ -253,109 +74,6 @@ hist(log(wc_data$duration_min))
 
 
 
-
-# #Training data set
-# train <- head(wc_data, n = 50)
-# train <- train[, c('towdate','set_time', 'up_time')]
-# train <- plyr::rename(train, c('towdate' = 'set_date'))
-# train$set_date <- dmy(train$set_date)
-# train$up_date <- train$set_date
-
-# # train[which(train$set_time >= train$up_time), ]
-
-# train[which(train$set_time >= train$up_time), 'up_date'] <- train[which(train$set_time >= train$up_time), 'up_date'] + days(1)
-
-# train$set_time <- as.character(train$set_time)
-# train$up_time <- as.character(train$up_time)
-
-# train$up_time <- paste(substr(train$up_time, nchar(train$up_time) - 3, nchar(train$up_time) - 2),
-#                        substr(train$up_time, nchar(train$up_time) - 1, nchar(train$up_time)), sep = ':')
-
-# train[which(nchar(train$up_time) == 3), 'up_time'] <- paste0('0', 
-#   train[which(nchar(train$up_time) == 3), 'up_time'])
-
-# train$set_time <- paste(substr(train$set_time, nchar(train$set_time) - 3, nchar(train$set_time) - 2),
-#                        substr(train$set_time, nchar(train$set_time) - 1, nchar(train$set_time)), sep = ':')
-
-# train[which(nchar(train$set_time) == 3), 'set_time'] <- paste0('0', 
-#   train[which(nchar(train$set_time) == 3), 'set_time'])
-
-# train$set_date_full <- ymd_hm(paste(train$set_date, train$set_time))
-# train$up_date_full <- ymd_hm(paste(train$up_date, train$up_time))
-
-# train$duration_min <- interval(train$set_date_full, train$up_date_full) / dminutes(1)
-# train$duration_hour <- interval(train$set_date_full, train$up_date_full) / dhours(1)
-
-
-
-# write.csv(train, row.names = FALSE, file = '/Users/peterkuriyama/Desktop/check.csv')
-
-
-# train$up_time <- (paste(substr(train$up_time, nchar(train$up_time) - 3, nchar(train$up_time) - 2),
-#           substr(train$up_time, nchar(train$up_time) - 1, nchar(train$up_time)), sep = ':'))
-
-
-
-
-
-
-
-
-
-nchar(train$set_time)
-nchar(train$up_time)
-
-nchar(train$set_time)
-nchar(train$set_time) - 1
-nchar(train$set_time) - 1
-
-train[which(train$set_time >= train$up_time), 'up_date'] + days(1)
-
-train[which(train$set_time >= train$up_time])
-dmy(train$towdate)
-train[which(train$set_time >= train$up_time), ]
-
-
-
-train$set_hour <- substr(train$set_time, nchar(train$set_time) - 3, nchar(train$set_time) - 2)
-train$set_minute <- substr(train$set_time, nchar(train$set_time) - 1, nchar(train$set_time))
-train$up_hour <- substr(train$up_time, nchar(train$up_time) - 3, nchar(train$up_time) - 2)
-train$up_minute <- substr(train$up_time, nchar(train$up_time) - 1, nchar(train$up_time))
-train$set_time2 <- paste(train$set_hour, train$set_minute, sep = ':')
-train$up_time2 <- paste(train$up_hour, train$up_minute, sep = ':')
-
-time(train$set_time2)
-
-train$set_time <- hms(train$set_time)
-train$up_time <- as.character(train$up_time)
-
-
-
-nchar(train$set_time)
-nchar(train$up_time)
-
-
-
-train <- train[, c('set_time', 'up_time')]
-
-
-
-
-
-xx[] <- lapply(train, FUN = function(x) if(nchar(x[1]) == 3) paste0('0', x[1]))
-
-if(nchar(train$set_time) == 3) paste0('0', train$set_teime)
-
-nchar(train$set_time)
-
-paste(substr(train$set_time, 1, 2), substr(train$set_time, 3, 4), sep = ":")
-
-train$dur <- duration(train$up_time - train$set_time, 'minutes')
-
-interval(start = train$up_time, end = train$set_time)
-
-
-temp <- subset(wc_data, drvid == "213184")
 
 #----------------------------------------
 #calculate miles per hour for towing and filter out ones that are too high
