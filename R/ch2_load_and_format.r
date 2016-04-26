@@ -41,33 +41,38 @@ ch2_load_and_format <- function(){
   nas <- c(which(is.na(wc_data$set_time)),
            which(is.na(wc_data$set_long)))
 
-  # removals <- rbind(removals, c('set_times are NA', length(nas), 
-  #   removals$nrow_end, removals$nrow_end - length(nas)))
+  #Object to keep track of removed rows
+  removals <- wc_data[nas, ]
+  
   wc_data <- wc_data[-nas, ]
 
   #Filter out hake tows
   wc_data %>% group_by(haul_id) %>% summarise(nspecies = length(unique(spc.name)),
     hake = ifelse("PACIFIC WHITING" %in% unique(common.name), 1, 0)) -> cccc
   hake_tow_ids <- subset(cccc, hake == 1)
-  hake_tows <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id)
 
+  hake_tows <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id)
+  hakes <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id)
+  removals <- rbind(hakes, removals)
+  
   #Remove hake rows
   wc_data <- subset(wc_data, haul_id %in% hake_tow_ids$haul_id == FALSE)
 
-  #Filter out certain data
-  #Filter out set_times with nchar == 1
-  # removals <- data.frame('desc' = 1, 'nremoved' = 1, 'nrow_start' = nrow(wc_data), 'nrow_end' = 1)
-  # removals$desc <- 'rows that have nchar(set_time) == 1'
-  # removals$nremoved = length(which(nchar(wc_data$set_time) == 1))
-  # wc_data <- wc_data[-which(nchar(wc_data$set_time) == 1), ]
-  # removals$nrow_end <- nrow(wc_data)
+  #Remove rows with lat longs == 0
+  zeros_inds <- which(wc_data$up_lat == 0 | wc_data$up_long == 0,
+                 wc_data$set_lat == 0 | wc_data$set_long == 0)
+  zeroes <- wc_data[zeros_inds, ]
+  removals <- rbind(removals, zeroes)
+  wc_data <- wc_data[-zeros_inds, ]
 
-  # #Filter out set_times with nchar == 2
-  # rem2 <- which(nchar(wc_data$set_time) == 2)
-  # wc_data[rem2, c('set_time', 'up_time', 'duration')]
-  
+  #Save removals object
+  save(removals, file = 'output/removals.Rdata')  
   #--------------------------------------------------------------------------------
   ##Calculate tow durations in minutes and seconds
+  
+  #Add direction
+  wc_data$tow_direction <- paste0(ifelse(wc_data$set_lat >= wc_data$up_lat, 'S', 'N'),
+                                  ifelse(wc_data$set_long >= wc_data$up_long, 'E', 'W'))
 
   ##assign dates and times
   wc_data <- plyr::rename(wc_data, c('towdate' = 'set_date'))
@@ -98,12 +103,6 @@ ch2_load_and_format <- function(){
   wc_data$duration_min <- interval(wc_data$set_date_full, wc_data$up_date_full) / dminutes(1)
   wc_data$duration_hour <- interval(wc_data$set_date_full, wc_data$up_date_full) / dhours(1)
 
-
   #--------------------------------------------------------------------------------
-  #Calculate distances between start and end points (assuming linearity)
-
-  #Add direction
-  wc_data$tow_direction <- paste0(ifelse(wc_data$set_lat >= wc_data$up_lat, 'S', 'N'),
-                                  ifelse(wc_data$set_long >= wc_data$up_long, 'E', 'W'))
-
-  }
+  return(wc_data)
+}
