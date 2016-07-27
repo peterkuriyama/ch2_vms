@@ -17,7 +17,15 @@ library(reshape2)
 
 source('R/dist_funcs.r')
 
+#--------------------------------------------------------------------------------
+#Load expanded West Coast Data
+load('output/wc_data_expanded_tows.Rdata')
+
+#--------------------------------------------------------------------------------
+#Source Functions to plot things
 funcs <- list.files('R')
+
+source('R/ch2_load_and_format.r')
 
 #Load Functions
 for(ii in 1:length(funcs)){
@@ -35,7 +43,6 @@ sapply(funcs, FUN = function(x) source(paste0('R/', x)))
 #--------------------------------------------------------------------------------
 #How to Plot Maps
 states_map <- map_data("state")
-
 
 ###United States Map
 png(width = 7.5, height = 4.5, units = 'in', res = 200,
@@ -79,15 +86,12 @@ ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat,
       axis.text = element_blank()) 
 dev.off()
 
-
-
 #Map with points for the highest 
 wc_plot <- ggplot(wc_map, aes(x = long, y = lat)) + geom_polygon() 
 
 
 wc_plot <- ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat, 
-  map_id = region), fill = 'gray') 
-+ 
+  map_id = region), fill = 'gray') + 
   geom_polygon(data = wc_map, aes(x = long, y = lat), fill = NA, color = 'black') + 
   coord_cartesian(xlim = c(-125, -117))
 
@@ -152,7 +156,7 @@ wc_data <- idea
 save(wc_data, file = 'output/wc_data_expanded_tows.Rdata')
 
 #--------------------------------------------------------------------------------
-load('output/wc_data_expanded_tows.Rdata')
+
 #Try to calculate this in a different way
 #Seems to be some duplicated rows, given lat and long
 wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
