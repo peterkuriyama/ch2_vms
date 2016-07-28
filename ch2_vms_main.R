@@ -63,6 +63,25 @@ binned %>% rowwise() %>% (function(x) rep(x$id, x$value)) ->
 #repeats
 binned_reps <- binned[ids, ]
 
+#Use states_map to assign states to each coordinate
+binned_reps$state <- 1
+binned_reps[which(binned_reps$ymax <= 42.02073), 'state'] <- 'california'
+binned_reps[which(binned_reps$ymax <= 46.22623 & 
+                  binned_reps$ymin >= 42.00354), 'state'] <- 'oregon'
+
+binned_reps[which(binned_reps$ymin >= 45.5329622623), 'state'] <- 'washington'
+
+#evaluate changes in spatial effort changes in specific states
+cal <- subset(binned_reps, state == 'california') 
+ggplot(cal, aes(x = group, y = value, group = unq)) + geom_line()
+
+ore <- subset(binned_reps, state == 'oregon')
+ggplot(ore, aes(x = group, y = value, group = unq)) + geom_line()
+
+wa <- subset(binned_reps, state == 'washington')
+ggplot(wa, aes(x = group, y = value, group = unq)) + geom_line()
+
+
 ggplot(binned_reps, aes(factor(unq))) + geom_bar() + facet_wrap(~ group)
 
 
@@ -208,6 +227,7 @@ count_vess <- function(zz){
 nvess <- rep(999, nrow(binned))
 
 strt <- Sys.time()
+#Takes like a minute
 for(jj in 1:nrow(binned)){
   #loop over rows in binned
   zz <- binned[jj, ]
@@ -260,12 +280,13 @@ by_when <- reshape2::dcast(binned_avg_when, xbin + ybin ~ when, value.var = 'avg
 
 by_when$status <- 1
 
-by_when[which(is.na(by_when$before)), 'status'] <- 'new_area'
-by_when[which(is.na(by_when$after)), 'status'] <- 'old_area'
-by_when[which(by_when$after > by_when$before), 'status'] <- 'increased'
-by_when[which(by_when$after < by_when$before), 'status'] <- 'decreased'
+by_when[which(is.na(by_when$Before)), 'status'] <- 'new_area'
+by_when[which(is.na(by_when$After)), 'status'] <- 'old_area'
+by_when[which(by_when$After > by_when$Before), 'status'] <- 'increased'
+by_when[which(by_when$After < by_when$Before), 'status'] <- 'decreased'
 
 #Merge statuses into binned data frame
+names(by_when)[1:2] <- c('x', 'y')
 binned <- merge(binned, by_when[, c('x', 'y', 'status')], by = c('x', 'y'))
 
 #---------------------------------------------------------
