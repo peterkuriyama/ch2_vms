@@ -21,6 +21,11 @@ source('R/dist_funcs.r')
 #Load expanded West Coast Data
 load('output/wc_data_expanded_tows.Rdata')
 
+#Seems to be some duplicated rows, given lat and long
+wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
+  as.data.frame -> wc_data_unique
+
+
 #--------------------------------------------------------------------------------
 #Source Functions to plot things
 funcs <- list.files('R')
@@ -39,6 +44,28 @@ sapply(funcs, FUN = function(x) source(paste0('R/', x)))
 # wc_data <- ch2_load_and_format()
 #load wc_data that has already been run
 # load('output/wc_data.Rdata')
+
+#--------------------------------------------------------------------------------
+#Plot distribution of effort in each area
+
+#bin values I think to 10km by 10km cells
+bh <- ggplot(wc_data_unique, aes(x = -long, y = lat, group = tow_year)) + 
+  stat_bin2d(binwidth = c(.0909, .11))
+
+binned <- ggplot_build(bh)$data[[1]]
+binned$unq <- paste(binned$xbin, binned$ybin)
+binned$id <- 1:nrow(binned)
+
+binned %>% rowwise() %>% (function(x) rep(x$id, x$value)) ->
+  ids
+
+#expanded binned data frame
+#repeats
+binned_reps <- binned[ids, ]
+
+ggplot(binned_reps, aes(factor(unq))) + geom_bar() + facet_wrap(~ group)
+
+
 
 #--------------------------------------------------------------------------------
 #How to Plot Maps
@@ -75,6 +102,7 @@ dev.off()
 ##West Coast Map
 wc_map <- states_map[states_map$region %in% c('california', 'oregon', 'washington',
   'nevada'), ]
+
 png(width = 4.5, height = 7.05, units = 'in', res = 200,
   file = 'wc_map.png')
 ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat,
@@ -158,13 +186,7 @@ save(wc_data, file = 'output/wc_data_expanded_tows.Rdata')
 #--------------------------------------------------------------------------------
 
 #Try to calculate this in a different way
-#Seems to be some duplicated rows, given lat and long
-wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
-  as.data.frame -> wc_data_unique
 
-#bin values 
-bh <- ggplot(wc_data_unique, aes(x = -long, y = lat, group = tow_year)) + 
-  stat_bin2d(binwidth = c(.0909, .11))
 
 # extract data from ggplot
 binned <- ggplot_build(bh)$data[[1]]
@@ -191,25 +213,6 @@ for(jj in 1:nrow(binned)){
   zz <- binned[jj, ]
   nvess[jj] <- count_vess(binned[jj, ]) #store number of vessels
   
-#   wc_data %>% filter(haul_id == 9553693 & drvid == 610567)
-# ww[, c('haul_id', 'drvid','set_long', 'long', 'up_long', 'species', 'set_lat', 'lat', 'up_lat')]
-
-# ww %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
-# as.data.frame
-
-  # wc_data_unique %>% filter(tow_year == zz$year & -long >= zz$xmin &
-  #                      -long <= zz$xmax & lat >= zz$ymin & 
-  #                      lat <= zz$ymax) -> ww
-
-  # %>% 
-  #   summarise(nvess = length(unique(drvid))) -> out
-  
-  
-  # wc_data %>% filter(tow_year == zz$year & -long >= zz$xmin &
-  #                      -long <= zz$xmax & lat >= zz$ymin & 
-  #                      lat <= zz$ymax) %>% 
-  #   summarise(nvess = length(unique(drvid))) -> out
-  # nnn[jj] <- out$nvess
   if(jj %% 500 == 0) cat('index= ', jj, 'time= ', Sys.time() - strt, '\n')
 }
 
