@@ -114,6 +114,7 @@ binned_reps %>% filter(nyears > 1) %>% distinct %>%
 
 #--------------------------------------------------------------------------------
 hist(binned_reps$slope, breaks = 50)
+binned_reps$unq1 <- paste(binned_reps$unq, binned_reps$group)
 
 #Plots of places with positive slopes in effort
 binned_reps %>% filter(slope > 0) %>% ggplot(., aes(x = group, y = count,
@@ -125,15 +126,41 @@ binned_reps %>% filter(nyears == 6) %>% ggplot(aes(x = group, y = count,
   group = unq)) + facet_wrap(~ state) + geom_line()
 
 #polygon plots
-binned_reps %>% filter(nyears == 6) %>% ggplot(aes(x = x, y = y)) + 
-  geom_polygon()
+which(duplicated(binned_reps$unq1))
+
+binned_reps %>% filter(nyears == 6) -> all_six
+ggplot(all_six, aes(x = x, y = y, fill = density)) + geom_tile() + 
+  facet_wrap(~ group) + scale_fill_gradient2(low = 'blue', high = 'red')
+
+#what proportions had increases/decreases in trawl activity?
+#Add column to specify increasing/decreasing/constant
+binned_reps$trend <- 'constant'
+binned_reps[which(binned_reps$slope > 0), 'trend'] <- 'increasing'
+binned_reps[which(binned_reps$slope < 0), 'trend'] <- 'decreasing'
+#20% had positive slopes
+#78% had negative slopes
+#1% had slopes of zero
+
+#Facet by trend
+binned_reps %>% filter(nyears == 6) %>% 
+  ggplot(aes(x = group, y = count, group = unq, colour = slope)) + geom_line() + 
+  theme_bw() + facet_wrap(~ trend + state) + scale_fill_gradient2(low = 'blue', high = 'red')
+
+#Try visualizing this a different way
+binned_reps %>% filter(nyears == 6 & state == 'washington') %>% 
+  ggplot(aes(x = group, y = count, group = unq, colour = slope)) + geom_line() + 
+  theme_bw()
 
 
 
-wc_plot <- ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat, 
-  map_id = region), fill = 'gray') + 
-  geom_polygon(data = wc_map, aes(x = long, y = lat), fill = NA, color = 'black') + 
-  coord_cartesian(xlim = c(-125, -117))
+
+
+#--------------------------------------------------------------------------------
+
+#Find locations that had the lowest decreases in effort
+big_declines <- binned_reps[which(binned_reps$slope < -20), ]
+
+
 
 #--------------------------------------------------------------------------------
 #Create plots of aggregated fleet effort
