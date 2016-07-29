@@ -37,7 +37,6 @@ for(ii in 1:length(funcs)){
   source(paste0("R/", funcs[ii]))
 }
 
-
 sapply(funcs, FUN = function(x) source(paste0('R/', x)))
 
 #Takes 45 seconds to run
@@ -112,6 +111,31 @@ binned_reps %>% filter(nyears > 1) %>% distinct %>%
     names(slope) <- NULL
     data.frame(., slope)
   }) %>% as.data.frame -> binned_reps
+
+#--------------------------------------------------------------------------------
+hist(binned_reps$slope, breaks = 50)
+
+#Plots of places with positive slopes in effort
+binned_reps %>% filter(slope > 0) %>% ggplot(., aes(x = group, y = count,
+  group = unq)) + 
+  facet_wrap(~ state) + geom_line()
+
+#plot places that had fishing in all six years
+binned_reps %>% filter(nyears == 6) %>% ggplot(aes(x = group, y = count, 
+  group = unq)) + facet_wrap(~ state) + geom_line()
+
+#polygon plots
+binned_reps %>% filter(nyears == 6) %>% ggplot(aes(x = x, y = y)) + 
+  geom_polygon()
+
+
+
+wc_plot <- ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat, 
+  map_id = region), fill = 'gray') + 
+  geom_polygon(data = wc_map, aes(x = long, y = lat), fill = NA, color = 'black') + 
+  coord_cartesian(xlim = c(-125, -117))
+
+
 
 #--------------------------------------------------------------------------------
 #How to Plot Maps
