@@ -81,10 +81,37 @@ ggplot(ore, aes(x = group, y = value, group = unq)) + geom_line()
 wa <- subset(binned_reps, state == 'washington')
 ggplot(wa, aes(x = group, y = value, group = unq)) + geom_line()
 
-
 ggplot(binned_reps, aes(factor(unq))) + geom_bar() + facet_wrap(~ group)
 
+##Fit linear regression to each unique area over time
+#Then can group plots by areas with increased / decreased effort
 
+#add number of years to binned reps
+binned_reps %>% group_by(unq) %>% mutate(nyears = length(unique(group))) %>%
+  as.data.frame -> binned_reps
+
+#Try this with a handful of unq values
+test <- binned_reps[which(binned_reps$unq %in% unique(binned_reps$unq)[1:10]), ]
+
+test %>% filter(nyears > 1) %>% distinct %>% 
+  group_by(unq) %>%
+  do({
+    mod <- lm(count ~ group, data = .)
+    slope <- mod$coefficients[2]
+    names(slope) <- NULL
+    data.frame(., slope)
+  }) %>% as.data.frame -> test
+
+
+#Now apply this code to the whole data set
+binned_reps %>% filter(nyears > 1) %>% distinct %>% 
+  group_by(unq) %>%
+  do({
+    mod <- lm(count ~ group, data = .)
+    slope <- mod$coefficients[2]
+    names(slope) <- NULL
+    data.frame(., slope)
+  }) %>% as.data.frame -> binned_reps
 
 #--------------------------------------------------------------------------------
 #How to Plot Maps
