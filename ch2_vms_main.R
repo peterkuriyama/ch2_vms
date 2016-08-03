@@ -21,10 +21,18 @@ source('R/dist_funcs.r')
 #Load expanded West Coast Data
 load('output/wc_data_expanded_tows.Rdata')
 
+#Add in ratio of apounds to hpounds
+#ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
+wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
+hist(subset(wc_data, ha_ratio < 2)$ha_ratio, breaks = 30) #histogram looks fairly normal
+length(which(wc_data$ha_ratio <= 1.2 & 
+  wc_data$ha_ratio >= 0.6)) / nrow(wc_data) #45% of tows seem to 
+
 #Seems to be some duplicated rows, given lat and long
 wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
   as.data.frame -> wc_data_unique
 
+#considered set lat and set long to be "lat" "long"
 
 #--------------------------------------------------------------------------------
 #Source Functions to plot things
@@ -151,14 +159,44 @@ binned_reps %>% filter(nyears == 6 & state == 'washington') %>%
   ggplot(aes(x = group, y = count, group = unq, colour = slope)) + geom_line() + 
   theme_bw()
 
-
-
-
-
 #--------------------------------------------------------------------------------
-
 #Find locations that had the lowest decreases in effort
 big_declines <- binned_reps[which(binned_reps$slope < -20), ]
+
+#Now trace it back to the actual changes in wc_data
+#find which things are between xmin xmax, ymin ymax
+
+
+test <- big_declines[1, ]
+test_data <- wc_data_unique[which(-wc_data_unique$long > test$xmin & 
+                                  -wc_data_unique$long < test$xmax &
+                                  wc_data_unique$lat < test$ymax & 
+                                  wc_data_unique$lat > test$ymin), ]
+
+hist(test_data$hpounds, na.rm = TRUE)
+
+test_data <- test_data[order(test_data$hpounds, decreasing = TRUE), ]
+
+#in one area how much arrowtooth flounder did they catch
+test_data %>% filter(spid %in% c('ARTH', 'DOVR', 'SABL', 'LSP1', "PTRL")) %>% 
+  ggplot(aes(x = tow_year, y = hpounds)) + geom_point(aes(color = spid))
+
+
+
+#Look at species compositions and catch amounts by tow
+
+
+
+#Do this in dplyr
+big_declines %>% rowwise() %>% 
+  do({
+    which(wc_data)
+
+  })
+
+
+wc_
+
 
 
 
