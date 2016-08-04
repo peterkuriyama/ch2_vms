@@ -32,10 +32,11 @@ outliers <- nw.vms[outlier_ind, ]
 nw.vms <- nw.vms[-outlier_ind, ]
 
 #Some of the outliers are fished on shorebased IFQ
-ifqs <- outliers[which(outliers$sector_desc %in% unique(outliers$sector_desc[c(2, 3, 6)])), ]
+ifqs <- outliers[which(outliers$sector_desc %in% unique(outliers$sector_desc)[c(2, 3, 6)]), ]
 
-
-
+png(width = 12.9, height = 7.9, res = 200, file = 'figs/outlier_vms.png', units = 'in')
+print(wc_map + geom_point(data = ifqs, aes(x = lon, y = lat)) + facet_grid(~ sector_desc))
+dev.off()
 
 
 
