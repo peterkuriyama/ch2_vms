@@ -1,8 +1,14 @@
 #Fishing Styles, per Boonstra and Hentati-Sundberg
 
+#Format West Coast Map
+world_map <- map_data("world")
+wc_map <- states_map[states_map$region %in% c('USA', 'Canada'), ]
+wc_map <- ggplot() + geom_map(data = world_map, map = world_map, aes(x = long, y = lat, 
+    map_id = region), fill = 'gray') + 
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = NA, color = 'gray') +
+    scale_x_continuous(limits = c(-180, -117)) + scale_y_continuous(limits = c(32, 60))
 
 #VMS Analysis
-
 load("data/nw_vms.Rdata")
 
 #Add in unadjusted latitude and longitude points
@@ -26,7 +32,10 @@ outliers <- nw.vms[outlier_ind, ]
 nw.vms <- nw.vms[-outlier_ind, ]
 
 #Some of the outliers are fished on shorebased IFQ
-ifqs <- subset(outliers, outliers %in% unique(outliers$sector_desc[c(2, 3, 6)]))
+ifqs <- outliers[which(outliers$sector_desc %in% unique(outliers$sector_desc[c(2, 3, 6)])), ]
+
+
+
 
 
 
