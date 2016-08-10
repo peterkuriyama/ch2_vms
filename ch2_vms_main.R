@@ -4,6 +4,12 @@
 #Expand tow footprints to get a sense of overall effort rather than set/up points
 #Remove points with only 
 #NE ALSO
+#Temporal Distribution of effort different before and after?
+#Wher and how are they catching species in certain areas?
+#Shift in effort for each vessel, directional shift maybe?
+#Track median of distribution or something 
+#k means clustering
+
 
 #--------------------------------------------------------------------------------
 #Start
@@ -24,15 +30,24 @@ load('output/wc_data_expanded_tows.Rdata')
 #Add in ratio of apounds to hpounds
 #ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
 wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
-hist(subset(wc_data, ha_ratio < 2)$ha_ratio, breaks = 30) #histogram looks fairly normal
-length(which(wc_data$ha_ratio <= 1.2 & 
-  wc_data$ha_ratio >= 0.6)) / nrow(wc_data) #45% of tows seem to 
+
+# hist(subset(wc_data, ha_ratio < 2)$ha_ratio, breaks = 30) #histogram looks fairly normal
+# length(which(wc_data$ha_ratio <= 1.2 & 
+#   wc_data$ha_ratio >= 0.6)) / nrow(wc_data) #45% of tows seem to 
 
 #Seems to be some duplicated rows, given lat and long
 wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
   as.data.frame -> wc_data_unique
 
 #considered set lat and set long to be "lat" "long"
+
+#--------------------------------------------------------------------------------
+#Set Map stuff
+world_map <- map_data("world")
+wc_map <- states_map[states_map$region %in% c('USA', 'Canada'), ]
+wc_map <- ggplot() + geom_map(data = world_map, map = world_map, aes(x = long, y = lat, 
+    map_id = region), fill = 'gray') + 
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = NA, color = 'gray')
 
 #--------------------------------------------------------------------------------
 #Source Functions to plot things
@@ -52,6 +67,153 @@ sapply(funcs, FUN = function(x) source(paste0('R/', x)))
 #load wc_data that has already been run
 # load('output/wc_data.Rdata')
 
+#--------------------------------------------------------------------------------
+#
+wc_data[1, c('set_lat', 'up_lat', 'avglat')]
+
+#Filter data so that hpounds and apounds ratios are between 0.6 and 1.1
+wc_data_filt <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
+
+#make sure everything is a unique row
+wc_data_filt <- wc_data_filt[-(grep("\\.", rownames(wc_data_filt))), ]
+
+#avglat and avglon are the midpoints of each tow, good starting point
+#cut down number of columsn because it's too big right now
+which(wc_data_filt$dyear != wc_data_filt$ryear)
+
+#change all the longitudes to negative
+wc_data_filt$avglong <- -wc_data_filt$avglong
+
+#Cents for centroids (medians)
+wc_data_filt %>% group_by(dyear, drvid) %>% summarise(mean_lat = mean(avglat, na.rm = TRUE),
+  mean_lon = mean(avglong, na.rm = TRUE))  %>% group_by(drvid) %>%
+  do({
+    mod_lon <- lm(mean_lon ~ dyear, data = .)
+    slope_lon <- coef(mod_lon)[2]
+    names(slope_lon) <- NULL
+
+    mod_lat <- lm(mean_lat ~ dyear, data = .)
+    slope_lat <- coef(mod_lat)[2]
+    names(slope_lat) <- NULL
+    data.frame(., slope_lon, slope_lat)
+  }) %>% as.data.frame -> cents
+
+#Plot the changes in slopes
+cc <- cents[, c('drvid', 'slope_lon', 'slope_lat')] %>% distinct()
+plot(cc$slope_lon, cc$slope_lat, pch = 19, col = "#4D4D4D20")
+abline(h = 0)
+abline(v = 0)
+
+#normalize lat and lon
+cents %>% group_by(drvid) %>% mutate(std_lat = (mean_lat - mean(mean_lat)) / sd(mean_lat),
+  std_lon = (mean_lon - mean(mean_lon)) / sd(mean_lon)) %>% as.data.frame -> cents
+cents %>% group_by(dyear) %>% mutate(avg_std_lat = mean(std_lat, na.rm = TRUE), 
+  avg_std_lon = mean(std_lon, na.rm = TRUE)) %>% as.data.frame -> cents
+
+
+
+
+ggplot() + geom_line(data = cents, aes(x = dyear, y = std_lon, group = drvid, 
+  col = "#4D4D4D60")) + theme_bw() + geom_line(data = cents,
+  aes(x = dyear, y = avg_std_lon))
+
+ggplot(data = cents, aes(x = dyear, y = std_lon, group = drvid)) + 
+  geom_line(colour = "#4D4D4D60") + theme_bw() + geom_line(data = cents_a,
+    aes(x = dyear, y = avg_std_lon))
+
+#--------------------------------------------------------------------------------
+#Individual vessel things
+#Very few vessels are fishing with multiple gear types
+
+
+qlon <- quantile(cents$slope_lon, na.rm = TRUE)
+qlat <- quantile(cents$slope_lat, na.rm = TRUE)
+
+subset(cents, slope_lon >= qlon[4] & slope_lat >= qlat[4])
+
+
+
+
+
+#Try plotting with a random drvid
+# temp <- subset(wc_data_filt, drvid == '546053')
+# temp1 <- subset(cents, drvid == '1037785')
+
+wc_map + geom_point(data = temp, aes(x = -long, y = lat, colour = hpounds)) + 
+  scale_x_continuous(limits = c(-125, -123.5)) + scale_y_continuous(limits = c(44.5, 48)) +
+  facet_wrap(~ when + target)
+
+#Look at the individual catches for each vessel
+
+#Find species that has the highest average catch value
+
+#--------------------------------------------------------------------------------
+#Look at opportunities for single vessel
+#look at single vessel
+temp <- subset(wc_data, drvid == "546053")
+
+temp1 <- temp[, c('trip_id', 'ddate', 'rdate', 'drvid', 'dyear' ,'townum', 'set_lat',
+ 'set_long', 'up_lat', 'up_long', 'depth1', 'target', 'hpounds', 'apounds', 'species' )]
+
+#Convert longitudes to latitudes
+#trans for transformed
+temp1$trans_set_long <- temp1$set_long * cos((2 * pi * temp1$set_lat) / 360)
+temp1$trans_up_long <- temp1$up_long * cos((2 * pi * temp1$up_lat) / 360)
+
+#calculate euclidean distances and cluster
+#Filter unique tows for euclidean stuff
+temp1 %>% group_by(trip_id, ddate, drvid, townum) %>% filter(row_number() == 1) %>%
+  as.data.frame -> dd
+
+
+distance <- dist(dd[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')],
+  method = 'euclidean')
+cluster.tree <- hclust(distance, method = 'average')
+y <- cutree(cluster.tree, h = 0.15)
+dd$cluster <- y
+
+#Add this
+xx <- inner_join(temp1, dd[, c('trip_id', 'ddate', 'rdate', 'drvid', 'townum', 'cluster') ], 
+  by = c('trip_id', 'ddate', 'rdate', 'drvid', 'townum'))
+
+#Merge it back with the bigger data set
+#What did they catch, how much and where was it
+
+#look at cluster 1, the most common cluster
+clus <- subset(xx, cluster == 1)
+
+ggplot() + geom_segment(data = clus, aes(x = -set_long, xend = -up_long,
+  y = set_lat, yend = up_lat), 
+  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
+
+#Did 
+
+
+###Look at all the tow lines for this one vessel
+
+
+
+hist(clus$hpounds, )
+
+
+
+
+
+
+
+#Find most populous clusters
+euc %>% group_by(cluster) %>% summarise(n = length(cluster)) %>% as.data.frame -> nclust
+nclust <- nclust[order(nclust$n, decreasing = TRUE), ]
+
+
+# ggdata <- subset(euc, cluster == 1 | cluster == 9 | cluster == 32)
+ggdata <- euc[euc$cluster %in% nclust[nclust$n >= 10, 'cluster'], ]
+
+ggplot() + geom_segment(data = ggdata, aes(x = -set_long, xend = -up_long,
+  y = set_lat, yend = up_lat, group = cluster, colour = cluster), 
+arrow = arrow(length = unit(0.1, 'cm'))) +  theme_bw()
+
+facet_wrap(~ cluster) +
 #--------------------------------------------------------------------------------
 #Plot distribution of effort in each area
 
@@ -138,7 +300,7 @@ which(duplicated(binned_reps$unq1))
 
 binned_reps %>% filter(nyears == 6) -> all_six
 ggplot(all_six, aes(x = x, y = y, fill = density)) + geom_tile() + 
-  facet_wrap(~ group) + scale_fill_gradient2(low = 'blue', high = 'red')
+  facet_grid(~ group) + scale_fill_gradient2(low = 'blue', high = 'red')
 
 #what proportions had increases/decreases in trawl activity?
 #Add column to specify increasing/decreasing/constant
