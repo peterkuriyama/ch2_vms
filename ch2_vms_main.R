@@ -24,8 +24,54 @@ library(reshape2)
 source('R/dist_funcs.r')
 
 #--------------------------------------------------------------------------------
+#Load and Format Data
+
 #Load expanded West Coast Data
 load('output/wc_data_expanded_tows.Rdata')
+
+#Add in ratio of apounds to hpounds
+#ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
+wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
+wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
+
+
+# #Load Port data and rename
+port_codes <- read.csv("data/port_codes.csv", stringsAsFactors = FALSE)
+port_codes <- plyr::rename(port_codes, c('Pcid' = 'text_id', 'Agid' = 'state',
+  'Agency' = 'number_id', 'Port.Agency.Description' = 'description'))
+
+# #identify missing ports
+# #Add in ports that I know are missing
+added_ports <- data.frame(text_id = c("", "", "", "", "", "", "", "", "", "", "", ""),
+                   state = c("O", "O", "W", "W", "W", "W", "W", "W", "W", "W", "W", "W"),
+                   number_id = c("02", "46", "WES", "ORE", "BEL", "N.B", "SEA", "BLA",
+                                 "P.A", "ILW", "ANA", "CAL"),
+                   description = c("ASTORIA", "dont know", "WESTPORT", "dont know ORE", 
+                                   "BELLINGHAM", "NORTH BEND", "SEATTLE", "BLAINE", 
+                                   "PORT ANGELES", "ILWACO", "ANACORTES", "dont know CAL"))
+port_codes <- rbind(port_codes, added_ports)
+port_codes$state_port <- paste(port_codes$state, port_codes$number_id)
+
+#Add dport and rport codes
+wc_data$state_dport <- paste(wc_data$agid, wc_data$dport)
+wc_data$state_rport <- paste(wc_data$agid, wc_data$rport)
+
+subset(port_codes, state_port == "O 2" | state_port == "O 02")
+
+##rport 
+test <- data.frame("state_port" = paste(wc_data$agid, wc_data$rport))
+test$state_port <- as.character(test$state_port)
+thing <- inner_join(x = test, y = port_codes[, c('state_port', 'description')], by = 'state_port')
+wc_data$rport_desc <- thing$description
+
+
+##dport
+test <- data.frame("state_port" = paste(wc_data$agid, wc_data$dport))
+test$state_port <- as.character(test$state_port)
+thing <- inner_join(test, port_codes[, c('state_port', 'description')], by = 'state_port')
+wc_data$dport_desc <- thing$description
+
+
 
 #Add in ratio of apounds to hpounds
 #ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
@@ -132,9 +178,6 @@ qlat <- quantile(cents$slope_lat, na.rm = TRUE)
 subset(cents, slope_lon >= qlon[4] & slope_lat >= qlat[4])
 
 
-
-
-
 #Try plotting with a random drvid
 # temp <- subset(wc_data_filt, drvid == '546053')
 # temp1 <- subset(cents, drvid == '1037785')
@@ -146,54 +189,6 @@ wc_map + geom_point(data = temp, aes(x = -long, y = lat, colour = hpounds)) +
 #Look at the individual catches for each vessel
 
 #Find species that has the highest average catch value
-
-#--------------------------------------------------------------------------------
-#Look at opportunities for single vessel
-#look at single vessel
-temp <- subset(wc_data, drvid == "546053")
-
-temp1 <- temp[, c('trip_id', 'ddate', 'rdate', 'drvid', 'dyear' ,'townum', 'set_lat',
- 'set_long', 'up_lat', 'up_long', 'depth1', 'target', 'hpounds', 'apounds', 'species' )]
-
-#Convert longitudes to latitudes
-#trans for transformed
-temp1$trans_set_long <- temp1$set_long * cos((2 * pi * temp1$set_lat) / 360)
-temp1$trans_up_long <- temp1$up_long * cos((2 * pi * temp1$up_lat) / 360)
-
-#calculate euclidean distances and cluster
-#Filter unique tows for euclidean stuff
-temp1 %>% group_by(trip_id, ddate, drvid, townum) %>% filter(row_number() == 1) %>%
-  as.data.frame -> dd
-
-
-distance <- dist(dd[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')],
-  method = 'euclidean')
-cluster.tree <- hclust(distance, method = 'average')
-y <- cutree(cluster.tree, h = 0.15)
-dd$cluster <- y
-
-#Add this
-xx <- inner_join(temp1, dd[, c('trip_id', 'ddate', 'rdate', 'drvid', 'townum', 'cluster') ], 
-  by = c('trip_id', 'ddate', 'rdate', 'drvid', 'townum'))
-
-#Merge it back with the bigger data set
-#What did they catch, how much and where was it
-
-#look at cluster 1, the most common cluster
-clus <- subset(xx, cluster == 1)
-
-ggplot() + geom_segment(data = clus, aes(x = -set_long, xend = -up_long,
-  y = set_lat, yend = up_lat), 
-  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
-
-#Did 
-
-
-###Look at all the tow lines for this one vessel
-
-
-
-hist(clus$hpounds, )
 
 
 
