@@ -28,13 +28,17 @@ source('R/dist_funcs.r')
 
 #Load expanded West Coast Data
 load('output/wc_data_expanded_tows.Rdata')
+wc_data_expanded <- wc_data
 
+
+####################################################
 #Add in ratio of apounds to hpounds
 #ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
 wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
 wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
 
 
+####################################################
 # #Load Port data and rename
 port_codes <- read.csv("data/port_codes.csv", stringsAsFactors = FALSE)
 port_codes <- plyr::rename(port_codes, c('Pcid' = 'text_id', 'Agid' = 'state',
@@ -72,6 +76,8 @@ thing <- inner_join(test, port_codes[, c('state_port', 'description')], by = 'st
 wc_data$dport_desc <- thing$description
 
 
+####################################################
+#Check that every
 
 #Add in ratio of apounds to hpounds
 #ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
@@ -82,10 +88,19 @@ wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
 #   wc_data$ha_ratio >= 0.6)) / nrow(wc_data) #45% of tows seem to 
 
 #Seems to be some duplicated rows, given lat and long
+#Remove expanded tows by filtering out rows that have "." in the rownames
+wc_data <- wc_data[-grep('\\.', rownames(wc_data)), ]
+
 wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
   as.data.frame -> wc_data_unique
 
-#considered set lat and set long to be "lat" "long"
+
+
+
+
+
+
+
 
 #--------------------------------------------------------------------------------
 #Set Map stuff
