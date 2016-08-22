@@ -21,22 +21,14 @@ library(dplyr)
 library(lubridate)
 library(reshape2)
 
-source('R/dist_funcs.r')
+# source('R/dist_funcs.r')
 
 #--------------------------------------------------------------------------------
 #Load and Format Data
 
 #Load expanded West Coast Data
 load('output/wc_data_expanded_tows.Rdata')
-wc_data_expanded <- wc_data
-
-
-####################################################
-#Add in ratio of apounds to hpounds
-#ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
-wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
-wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
-
+# wc_data_expanded <- wc_data
 
 ####################################################
 # #Load Port data and rename
@@ -60,7 +52,7 @@ port_codes$state_port <- paste(port_codes$state, port_codes$number_id)
 wc_data$state_dport <- paste(wc_data$agid, wc_data$dport)
 wc_data$state_rport <- paste(wc_data$agid, wc_data$rport)
 
-subset(port_codes, state_port == "O 2" | state_port == "O 02")
+# subset(port_codes, state_port == "O 2" | state_port == "O 02")
 
 ##rport 
 test <- data.frame("state_port" = paste(wc_data$agid, wc_data$rport))
@@ -77,22 +69,62 @@ wc_data$dport_desc <- thing$description
 
 
 ####################################################
+#Add in ratio of apounds to hpounds
+#ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
+wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
+
+
+#Save some columns of original data
+wc_data_orig <- wc_data %>% select(trip_id, ddate, agid, rdate, drvid, dyear, townum,
+  set_lat, set_long, up_lat, up_long, depth1, target, species, rport_desc,
+  dport_desc, d_portgrp, arid_psmfc, duration, net_type, ha_ratio, hpounds, apounds)
+
+wc_data_orig %>% group_by(rport_desc, dyear) %>% summarize(nvess = length(unique(drvid))) %>%
+  arrange(desc(nvess)) %>% as.data.frame
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+####################################################
+mb <- subset(wc_data_orig, dport_desc == 'MORRO BAY' & dyear == 2012)
+mb <- mb[-grep('\\.', rownames(mb)), ]
+
+
+mb %>% group_by(species) %>% summarize(toth = sum(hpounds, na.rm = TRUE),  
+  tota = sum(apounds, na.rm = TRUE)) %>% as.data.frame
+
+
+unique(wc_data_orig)
+
+
+
+
+
+# wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
+
+
+####################################################
 #Check that every
 
 #Add in ratio of apounds to hpounds
 #ratio should be between 0.6-1.1 for acceptable rows, Lee and Sampson
-wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
+# wc_data$ha_ratio <- wc_data$hpounds / wc_data$apounds
 
 # hist(subset(wc_data, ha_ratio < 2)$ha_ratio, breaks = 30) #histogram looks fairly normal
 # length(which(wc_data$ha_ratio <= 1.2 & 
 #   wc_data$ha_ratio >= 0.6)) / nrow(wc_data) #45% of tows seem to 
 
-#Seems to be some duplicated rows, given lat and long
-#Remove expanded tows by filtering out rows that have "." in the rownames
-wc_data <- wc_data[-grep('\\.', rownames(wc_data)), ]
-
-wc_data %>% group_by(drvid, trip_id, haul_id, lat, long) %>% filter(row_number() == 1) %>%
-  as.data.frame -> wc_data_unique
 
 
 
