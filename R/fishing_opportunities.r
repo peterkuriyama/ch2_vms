@@ -4,132 +4,408 @@
 
 # #--------------------------------------------------------------------------------
 # #Filter west coast data so that ha_ratio is pretty close in agreement
-# wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
+wc_data <- subset(wc_data, ha_ratio >= 0.6 & ha_ratio <= 1.1)
 # #per Lee and Sampson oregon trawl paper
 
 #--------------------------------------------------------------------------------
 #Prepare WC data for analysis
+#wc_data_orig is the raw data frame
 
 #Remove anything with a . in the rowname
 wc_data <- wc_data[-grep('\\.', rownames(wc_data)), ]
 
 #Add in percentages
-subset(wc_data1, trip_id == '1081113' & townum == 5)
+# subset(wc_data1, trip_id == '1081113' & townum == 5)
 
 #Calculate tow-level percentages
-wc_data %>% group_by(trip_id, townum) %>% mutate(tot_hpounds = sum(hpounds),
-  tot_apounds = sum(apounds), h_perc = hpounds / tot_hpounds, a_perc = apounds / tot_apounds) %>%
-  as.data.frame %>% select(-c(tot_hpounds, tot_apounds)) -> wc_data
+wc_data %>% group_by(trip_id, townum) %>% mutate(tow_hpounds = sum(hpounds, na.rm = TRUE),
+  tow_apounds = sum(apounds, na.rm = TRUE), tow_spp_hperc = hpounds / tow_hpounds, 
+  tow_spp_aperc = apounds / tow_apounds) %>%
+  as.data.frame -> wc_data
 
+#Select only certain columns of wc_data to make it easier to work with
+part_wc_data <- wc_data %>% select(trip_id, ddate, agid, rdate, drvid, dyear, townum,
+  set_lat, set_long, up_lat, up_long, depth1, target, tow_spp_hperc, tow_spp_aperc, species, rport_desc,
+  dport_desc, d_portgrp, arid_psmfc, duration, net_type, tow_hpounds, tow_apounds, hpounds, 
+  apounds)
 
+#Filter out unique tows also for part_wc_data
+part_wc_data %>% group_by(trip_id, townum) %>% filter(row_number(townum) == 1) %>%
+  as.data.frame -> part_wc_data
 
-
-
-
-
-wc_ast <- subset(wc_data, dport_desc == 'ASTORIA')
-
-#Lok at trends in catches/landings
-wc_data %>% group_by(species, dyear) %>% summarize(sum_apounds = sum(apounds), sum_hpounds = sum(hpounds)) %>% 
-  arrange(desc(sum_apounds)) %>% filter(species %in% c('Arrowtooth Flounder', 
-    'Dover Sole', 'Sablefish', 'Petrale Sole')) %>% 
-ggplot() + geom_line(aes(x = dyear, y = sum_apounds)) + facet_wrap(~ species) + theme_bw()
-
-#arrowtooth flounder, dover sole, sablefish, petrale sole
-#For each 
-
-
-
-wcwc <- wc_data
-wcwc <- wcwc[, c('trip_id', 'ddate', 'agid','rdate','drvid', 'dyear' ,'townum', 'set_lat',
- 'set_long', 'up_lat', 'up_long', 'depth1', 'target', 'hpounds', 'apounds', 'species',
- 'rport_desc', 'dport_desc' )]
-
-length(which(wcwc$rport_desc != wcwc$dport_desc)) / nrow(wcwc)
+length(which(part_wc_data$rport_desc != part_wc_data$dport_desc)) / nrow(part_wc_data)
 #3% of tows departed and returned at different ports
 
-wcwc$trans_set_long <- wcwc$set_long * cos((2 * pi * wcwc$set_lat) / 360)
-wcwc$trans_up_long <- wcwc$up_long * cos((2 * pi * wcwc$up_lat) / 360)
+#Transform longitudes to latitude space
+part_wc_data$trans_set_long <- part_wc_data$set_long * cos((2 * pi * part_wc_data$set_lat) / 360)
+part_wc_data$trans_up_long <- part_wc_data$up_long * cos((2 * pi * part_wc_data$up_lat) / 360)
 
-#Filter wcwc to include only unique tows
-wcwc %>% group_by(trip_id, ddate, drvid, townum, agid) %>% filter(row_number() == 1) %>%
-  as.data.frame -> wcwc
+# #Lok at trends in catches/landings
+# wc_data %>% group_by(species, dyear) %>% summarize(sum_apounds = sum(apounds), sum_hpounds = sum(hpounds)) %>% 
+#   arrange(desc(sum_apounds)) %>% filter(species %in% c('Arrowtooth Flounder', 
+#     'Dover Sole', 'Sablefish', 'Petrale Sole')) %>% 
+# ggplot() + geom_line(aes(x = dyear, y = sum_apounds)) + facet_wrap(~ species) + theme_bw()
+
+#--------------------------------------------------------------------------------
+#Look at aggregated numbers
+
+#Number of tows at each port
+  #Find port with most tows
+part_wc_data %>% group_by(dport_desc) %>% summarize(ntows = length(trans_up_long), tot_h = 
+  sum(hpounds, na.rm = TRUE), tot_a = sum(apounds, na.rm = TRUE), lbs_per_tow = tot_h / ntows) %>% 
+  arrange(desc(ntows)) %>% as.data.frame
+
+#Vessel Catch in each year
+  #Find Biggest vessels
+part_wc_data %>% group_by(drvid, dyear) %>% summarize(tot_h = sum(hpounds, na.rm = TRUE),
+  tot_a = sum(apounds, na.rm = TRUE)) %>% as.data.frame -> vess_catch
 
 #--------------------------------------------------------------------------------
 #Subset and cluster by Port
 
 #See which ports have the most 
-wc_ast <- subset(wc_data, dport_desc == 'ASTORIA')
-wc_ast %>% 
-
-
-ast <- subset(wcwc, dport_desc == 'ASTORIA')
-dist_ast <- dist(ast[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')], 
+wc_ast <- subset(part_wc_data, dport_desc == 'MORRO BAY')
+  
+dist_ast <- dist(wc_ast[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')], 
   method = 'euclidean')
 clust_ast <- hclust(dist_ast, method = 'average')
-tree_ast <- cutree(clust_ast, h = 0.3)
+# save(clust_ast, file = 'output/clust_ast.Rdata')
 
-ast$clust <- tree_ast
+tree_ast <- cutree(clust_ast, h = 0.15)
+# rm(list = c("dist_ast"))
+
+wc_ast$clust <- tree_ast
 
 #Find most common clusters
-ast %>% group_by(dyear, clust) %>% summarise(nn = length(clust)) %>% group_by(clust) %>%
-  mutate(ntot = sum(nn)) %>% as.data.frame -> ast_sum
-ast_sum <- ast_sum[order(ast_sum$nn, decreasing = TRUE), ]
+wc_ast %>% group_by(dyear, clust) %>% summarise(nn = length(clust)) %>% group_by(clust) %>%
+  mutate(ntot = sum(nn)) %>% arrange(desc(nn)) %>%
+  as.data.frame -> ast_sum
+ast_sum %>% distinct(clust, ntot)
+
+#Need to merge the clusters back into the original wc_data that has the tow catch compositions  
+#Group all the dplyr functions that add columns on to the ast data frame
+ast <- subset(wc_data, dport_desc == 'MORRO BAY')
+
+#Merge with inner join
+ast <- inner_join(ast, wc_ast[, c('trip_id', 'townum', 'clust')], 
+  by = c('trip_id', 'townum'))
+
+
+#Select certain columns
+ast %>% select(trip_id, ddate, agid, rdate, drvid, dyear, townum,
+  set_lat, set_long, up_lat, up_long, depth1, target, species, rport_desc,
+  dport_desc, d_portgrp, arid_psmfc, duration, net_type, hpounds, apounds, clust, 
+  ha_ratio, tow_spp_hperc, tow_spp_aperc ) -> ast
+
+#Calculate catch compositions for each trip, vessel, and cluster through time
+  #Trip Catch Compositions
+ast %>% group_by(drvid, trip_id, dyear) %>% mutate(trip_hpounds = sum(hpounds),
+  trip_apounds = sum(apounds)) %>% group_by(drvid, trip_id, species, dyear) %>%
+  mutate(trip_spp_hperc = sum(hpounds) / trip_hpounds, 
+         trip_spp_aperc = sum(apounds) / trip_apounds) %>% 
+  #Vessel Catch Compositions
+  group_by(drvid, dyear) %>% mutate(vess_hpounds = sum(hpounds),
+    vess_apounds = sum(apounds)) %>% group_by(drvid, species, dyear) %>%
+  mutate(vess_spp_hperc = sum(hpounds) / vess_hpounds, 
+         vess_spp_aperc = sum(apounds) / vess_apounds) %>% 
+  #Cluster Catch Compositions
+  group_by(clust, dyear) %>% mutate(clust_hpounds = sum(hpounds),
+    clust_apounds = sum(apounds)) %>% group_by(clust, dyear, species) %>%
+    mutate(clust_spp_hperc = sum(hpounds) / clust_hpounds,
+           clust_spp_aperc = sum(apounds) / clust_apounds) %>% as.data.frame -> ast
+
+#--------------------------------------------------------------------------------
+#Cluster everything by group
+ast$group <- "other"
+
+#Classify Species
+targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+  'Longspine Thornyhead', "Lingcod" )
+
+const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+  'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
+
+#add in category column to data
+ast$group <- 'other'
+ast[which(ast$species %in% targs), 'group'] <- 'targ'
+ast[which(ast$species %in% const), 'group'] <- 'cons'
+
+#Calculate compositions for each group
+ast %>% group_by(drvid, trip_id, dyear) %>% group_by(drvid, trip_id, group, dyear) %>%
+  mutate(trip_group_hperc = sum(hpounds) / trip_hpounds, 
+         trip_group_aperc = sum(apounds) / trip_apounds) %>% 
+  #Vessel Catch Compositions
+  group_by(drvid, dyear) %>% group_by(drvid, group, dyear) %>%
+  mutate(vess_group_hperc = sum(hpounds) / vess_hpounds, 
+         vess_group_aperc = sum(apounds) / vess_apounds) %>% 
+  #Cluster Catch Compositions
+  group_by(clust, dyear) %>% group_by(clust, dyear, group) %>%
+    mutate(clust_group_hperc = sum(hpounds) / clust_hpounds,
+           clust_group_aperc = sum(apounds) / clust_apounds) %>% as.data.frame -> ast
+
+#--------------------------------------------------------------------------------
+#Filter and save the plots    
+
+#Maps
+
+
+xlims <- c(floor(range(-c(ast$set_long, ast$up_long))[1]),
+           ceiling(range(-c(ast$set_long, ast$up_long))[2]))
+
+ylims <- c(floor(range(c(ast$set_lat, ast$up_lat))[1]),
+           ceiling(range(c(ast$set_lat, ast$up_lat))[2]))
+
+
+# ggplot(data = ast) + geom_segment(aes(x = -set_long, xend = -up_long, y = set_lat,
+#               yend = up_lat), arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() -> tt
+
+###Plot maps in a for loop
+pdf(width = 9, height = 7, file = 'figs/morro_bay_clusters.pdf')
+
+for(ii in unique(ast$clust)){
+  cc <- ii
+  temp <- ast %>% filter(clust == cc)
+  temp$dyear <- as.character(temp$dyear)
+  one <- wc_map + geom_segment(data = temp, aes(x = -set_long, 
+              xend = -up_long, y = set_lat, 
+              yend = up_lat), arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + 
+              ggtitle(paste("cluster = ", cc, ",", "ntows = ", nrow(temp))) + 
+              scale_x_continuous(limits = xlims) + 
+              scale_y_continuous(limits = ylims) + 
+              facet_wrap(~ dyear)
+              # scale_colour_manual(values = c("2008" = 'red', 
+              #   "2009" = 'blue', "2010" = 'green', "2011" = 'darkgreen', "2012" = 'orange',
+              #   "2013" = 'yellow'))
+  print(one)            
+}
+
+dev.off()
+
+
+###Barplots
+pdf(width = 9, height = 7, file = 'figs/morro_bay_barplots.pdf')
+
+for(ii in unique(ast$clust)){
+  cc <- ii
+  temp <- ast %>% filter(clust == cc & species %in% c(targs, const)) %>% 
+    distinct(dyear, species, clust_spp_hperc)
+  two <- ggplot(data = temp) + geom_bar(stat = 'identity', 
+        aes(x = factor(species), y = clust_spp_hperc)) + facet_grid(~ dyear) + 
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+        ggtitle(paste("cluster = ", cc))
+
+  print(two)
+}
+
+dev.off()
+
+
+
+
+
+ geom_bar(stat = 'identity', aes(x = factor(species), y = clust_hperc)) + 
+  facet_grid(~ clust) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+
+
+
+
+ast %>% group_by(trip_id) %>% mutate(tot_hpounds = sum(hpounds),
+  tot_apounds = sum(apounds)) %>% as.data.frame -> ast
+
+
+
+
+
+#Calculate average species catch proportion for each vessel 
+  #also count the # of years each vessel is in logbook
+ast %>% group_by(drvid, dyear, species) %>% mutate(drvid_selex = mean(h_perc)) %>%
+  group_by(drvid) %>% mutate(drv_years = length(unique(dyear))) %>%
+  as.data.frame -> ast
+
+#Find Majority caught species for each tow
+ast %>% group_by(trip_id, townum) %>% arrange(desc(h_perc)) %>% 
+  mutate(most_caught = species[row_number(1)]) %>% as.data.frame -> ast
+
+#Calculate number of tows in each cluster
+ast %>% group_by(dyear, species, clust) %>% mutate(ntows = length(h_perc)) %>%
+  as.data.frame %>% arrange(desc(ntows)) -> ast
+
+#Need to add this in 
+
+ #Plot the top 10 clusters and see which target and rebuilding species they caught
+
+unique(wc_data$species)
+
+#Calculate catch compositions for each cluster
+ast %>% group_by(clust) %>% mutate(clust_hpounds = sum(tot_hpounds, na.rm = TRUE), clust_apounds = 
+  sum(tot_apounds, na.rm = TRUE)) %>% group_by(clust, species) %>% 
+  mutate(clust_hperc = sum(tot_hpounds) / clust_hpounds, 
+         clust_aperc = sum(tot_apounds) / clust_apounds) %>% as.data.frame -> ast
+
+
+
+#
+
+#####ASTORIA PLOTS
+#Which clusters had the most catch
+dat <- ast %>% filter(clust %in% 1:10 & species %in% c(targs, const))
+
+#Plot the tow locations
+ggplot(data = dat) + geom_segment(aes(x = -set_long, xend = -up_long, y = set_lat,
+  yend = up_lat, colour = clust), arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() 
+
+
+ast %>% filter(clust %in% 1:10 & species %in% c(targs, const)) %>% 
+  distinct(clust, species, clust_hperc) %>% 
+  ggplot(.) + geom_bar(stat = 'identity', aes(x = factor(species), y = clust_hperc)) + 
+  facet_grid(~ clust) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+pdf(figs = '', units = 'in', height = 7, weight = 7)
+
+ggplot(data = dat) + 
+
+
+
+
+ggplot() + geom_segment(data = ast %>% filter(species == 'Sablefish'), 
+  aes(x = -set_long, xend = -up_long,
+  y = set_lat, yend = up_lat, colour = h_mostly_targ), 
+  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
+
+
+ast %>% group_by(clust) %>% summarize(clust_hpounds = unique(clust_hpounds)) %>%
+  arrange(desc(clust_hpounds)) %>% filter(row_number(clust) <= 10) %>% select(clust) %>%
+  as.vector
+
+
+
+
+
+
+ast %>% filter(clust %in% 1:10) %>% distinct(clust, species, clust_hperc) %>% 
+  ggplot() + geom_bar(stat = 'identity', aes(x = factor(species), y = clust_hperc)) + 
+  facet_grid(~ clust) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+
+arrange(desc(clust_hpounds)) %>% distinct() %>%
+  as.data.frame
+
+
+
+
+
+
+
+#
+
+
+ast$h_other_perc <- 1 - ast$h_perc
+ast$a_other_perc <- 1 - ast$a_perc
+
+
+#Look at histograms of bycatch in each cluster for each species
+
+
+
+
+
+ast %>% filter(species == "Dover Sole" & drv_years > 3) %>% ggplot() + geom_line(aes(x = dyear, 
+  y = drvid_selex, colour = drvid)) 
+
+
+
+
+
+#Can ID the most selective clusters
+check <- subset(ast, clust == 12)
+check$h_mostly_targ <- "yes"
+check[which(check$h_other_perc >= 0.5), 'h_mostly_targ'] <- 'no'
+
+  
+#Look at track lines for each tow
+ggplot() + geom_segment(data = check %>% filter(species == 'Sablefish'), 
+  aes(x = -set_long, xend = -up_long,
+  y = set_lat, yend = up_lat, colour = h_mostly_targ), 
+  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
+
+
+
+
+
+ast %>% filter(trip_id = 1095969 & )
+
+
+
+
+
+#For each species find out the proportion of tows that have low bycatch
+ast %>% group_by(dyear, species, clust) %>% summarise(perc_selective = 
+  length(which(h_perc >= 0.5)) / length(h_perc), ntows = length(h_perc)) %>% 
+  as.data.frame -> selective_ast
+
+
+#Look at percentage of tows that catch more than 50% of specified species
+ggplot(ast) + geom_point(aes(x = clust, 
+  y = h_perc, colour = ntows)) + facet_wrap(~ species)
+
+#Big species are arrowtooth, dover, lingcod, POP, longspine, petrale, sablefish, shortspine thornyhead, yellowtail
+ast %>% filter(species == "Dover Sole" & ntows > 50) %>% ggplot() + geom_histogram(aes(h_perc)) + 
+  facet_wrap(~ clust)
+
+#Look at track lines for each tow 
+#Also cluster 6
+ggplot() + geom_segment(data = check %>% filter(species == 'Dover Sole' & clust == 12), 
+  aes(x = -set_long, xend = -up_long,
+  y = set_lat, yend = up_lat, colour = h_mostly_targ), 
+  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
+
+
+
+
+unique(selective$species)
+ggplot(selective) + geom_line(aes(x = dyear, y = perc_selective, colour = species))
+
+#50% of Dover tows catch more than 50%
+
+
+
+#Pretty much uniform distribution
+ggplot(subset(check, species == 'Dover Sole')) + geom_histogram(aes(h_other_perc)) + 
+  facet_wrap(~ dyear)
+
+#still catching lots of other things
+ggplot(subset(check, species == 'Petrale Sole')) + geom_histogram(aes(h_other_perc)) + 
+  facet_wrap(~ dyear)
+
+ggplot(subset(check, species == 'Sablefish')) + geom_histogram(aes(h_other_perc)) + 
+  facet_wrap(~ dyear)
 
 
 #Plot the changes in ntows for each cluster over time
 ast_sum %>% filter(ntot > 10) %>% ggplot() + 
   geom_line(aes(x = dyear, y = nn, color = clust, group = clust))
 
+
+
+
+
+###
+#Need to add cluster assignments into original data frame
+###
+
+
+
+
 unique(ast_sum$clust)
 
 #Plot the clusters around astoria
-ggplot() + geom_segment(data = subset(ast, clust == 6), aes(x = -set_long, xend = -up_long,
-  y = set_lat, yend = up_lat), 
-  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
 
 #I think the number of tows went down after catch shares
-
-
-
-
-or <- subset(wcwc1, agid == 'O')
-wa <- subset(wcwc1, agid == 'W')
-ca <- subset(wcwc1, agid == 'C')
-
-#Calculate distances
-dist_or <- dist(or[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')],
-  method = 'euclidean')
-
-# clust_or <- hclust(distor, method = 'average')
-# tree_or <- cutree(clus_or, h = 0.15)
-
-#Analyzed these on the lab mac
-load('output/clust_ca.Rdata')
-load('output/clust_wa.Rdata')
-load('output/clust_or.Rdata')
-
-#These dimensions are off for some reason
-
-
-#Cut the tree and assign 
-
-tree_ca <- cutree(clust_ca, h = 0.15)
-
-
-
-tree_wa <- cutree(clust_wa, h = 0.15)
-
-
-nrow(or %>% distinct(up_lat, set_lat, trans_set_long, trans_up_long))
-length(tree_or)
-
-duplicated(or['trip_id'])
-
-
-
-length(tree_or)
-
 
 #--------------------------------------------------------------------------------
 
