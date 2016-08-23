@@ -83,6 +83,14 @@ wc_data_orig %>% group_by(rport_desc, dyear) %>% summarize(nvess = length(unique
   arrange(desc(nvess)) %>% as.data.frame
 
 
+#--------------------------------------------------------------------------------
+#Set Map stuff
+world_map <- map_data("world")
+wc_map <- states_map[states_map$region %in% c('USA', 'Canada'), ]
+wc_map <- ggplot() + geom_map(data = world_map, map = world_map, aes(x = long, y = lat, 
+    map_id = region), fill = 'gray') + 
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = NA, color = 'gray')
+
 
 
 
@@ -133,14 +141,6 @@ unique(wc_data_orig)
 
 
 
-
-#--------------------------------------------------------------------------------
-#Set Map stuff
-world_map <- map_data("world")
-wc_map <- states_map[states_map$region %in% c('USA', 'Canada'), ]
-wc_map <- ggplot() + geom_map(data = world_map, map = world_map, aes(x = long, y = lat, 
-    map_id = region), fill = 'gray') + 
-    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = NA, color = 'gray')
 
 #--------------------------------------------------------------------------------
 #Source Functions to plot things
