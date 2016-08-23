@@ -63,9 +63,13 @@ part_wc_data %>% group_by(drvid, dyear) %>% summarize(tot_h = sum(hpounds, na.rm
 #--------------------------------------------------------------------------------
 #Write a function to subset and cluster by port
 
-unique(part_wc_data$dport_desc)
 
-sub_clust <- function(port, cut_point){
+
+sub_clust <- function(port, cut_point, 
+       targs = c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+                 'Longspine Thornyhead', "Lingcod"),
+       const = c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+                 'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')){
   wc_ast <- subset(part_wc_data, dport_desc == port)
     
   dist_ast <- dist(wc_ast[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')], 
@@ -122,11 +126,11 @@ sub_clust <- function(port, cut_point){
   ast$group <- "other"
 
   #Classify Species
-  targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
-    'Longspine Thornyhead', "Lingcod" )
+  # targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+  #   'Longspine Thornyhead', "Lingcod" )
 
-  const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
-    'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
+  # const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+  #   'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
 
   #add in category column to data
   ast$group <- 'other'
@@ -149,96 +153,16 @@ sub_clust <- function(port, cut_point){
   return(ast)
 }
 
-xx <- sub_clust(port = 'MORRO BAY', cut_point = 0.2)
-
-#Another Function to plot everything
-#--------------------------------------------------------------------------------
-#Subset and cluster by Port
-
-#See which ports have the most 
-# wc_ast <- subset(part_wc_data, dport_desc == 'MORRO BAY')
-  
-# dist_ast <- dist(wc_ast[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')], 
-#   method = 'euclidean')
-# clust_ast <- hclust(dist_ast, method = 'average')
-# # save(clust_ast, file = 'output/clust_ast.Rdata')
-
-# tree_ast <- cutree(clust_ast, h = 0.15)
-# # rm(list = c("dist_ast"))
-
-# wc_ast$clust <- tree_ast
-
-# #Find most common clusters
-# wc_ast %>% group_by(dyear, clust) %>% summarise(nn = length(clust)) %>% group_by(clust) %>%
-#   mutate(ntot = sum(nn)) %>% arrange(desc(nn)) %>%
-#   as.data.frame -> ast_sum
-# ast_sum %>% distinct(clust, ntot)
-
-# #Need to merge the clusters back into the original wc_data that has the tow catch compositions  
-# #Group all the dplyr functions that add columns on to the ast data frame
-# ast <- subset(wc_data, dport_desc == 'MORRO BAY')
-
-# #Merge with inner join
-# ast <- inner_join(ast, wc_ast[, c('trip_id', 'townum', 'clust')], 
-#   by = c('trip_id', 'townum'))
-
-
-# #Select certain columns
-# ast %>% select(trip_id, ddate, agid, rdate, drvid, dyear, townum,
-#   set_lat, set_long, up_lat, up_long, depth1, target, species, rport_desc,
-#   dport_desc, d_portgrp, arid_psmfc, duration, net_type, hpounds, apounds, clust, 
-#   ha_ratio, tow_spp_hperc, tow_spp_aperc ) -> ast
-
-#Calculate catch compositions for each trip, vessel, and cluster through time
-  #Trip Catch Compositions
-# ast %>% group_by(drvid, trip_id, dyear) %>% mutate(trip_hpounds = sum(hpounds),
-#   trip_apounds = sum(apounds)) %>% group_by(drvid, trip_id, species, dyear) %>%
-#   mutate(trip_spp_hperc = sum(hpounds) / trip_hpounds, 
-#          trip_spp_aperc = sum(apounds) / trip_apounds) %>% 
-#   #Vessel Catch Compositions
-#   group_by(drvid, dyear) %>% mutate(vess_hpounds = sum(hpounds),
-#     vess_apounds = sum(apounds)) %>% group_by(drvid, species, dyear) %>%
-#   mutate(vess_spp_hperc = sum(hpounds) / vess_hpounds, 
-#          vess_spp_aperc = sum(apounds) / vess_apounds) %>% 
-#   #Cluster Catch Compositions
-#   group_by(clust, dyear) %>% mutate(clust_hpounds = sum(hpounds),
-#     clust_apounds = sum(apounds)) %>% group_by(clust, dyear, species) %>%
-#     mutate(clust_spp_hperc = sum(hpounds) / clust_hpounds,
-#            clust_spp_aperc = sum(apounds) / clust_apounds) %>% as.data.frame -> ast
-
-#--------------------------------------------------------------------------------
-# #Cluster everything by group
-# ast$group <- "other"
-
-# #Classify Species
-# targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
-#   'Longspine Thornyhead', "Lingcod" )
-
-# const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
-#   'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
-
-# #add in category column to data
-# ast$group <- 'other'
-# ast[which(ast$species %in% targs), 'group'] <- 'targ'
-# ast[which(ast$species %in% const), 'group'] <- 'cons'
-
-# #Calculate compositions for each group
-# ast %>% group_by(drvid, trip_id, dyear) %>% group_by(drvid, trip_id, group, dyear) %>%
-#   mutate(trip_group_hperc = sum(hpounds) / trip_hpounds, 
-#          trip_group_aperc = sum(apounds) / trip_apounds) %>% 
-#   #Vessel Catch Compositions
-#   group_by(drvid, dyear) %>% group_by(drvid, group, dyear) %>%
-#   mutate(vess_group_hperc = sum(hpounds) / vess_hpounds, 
-#          vess_group_aperc = sum(apounds) / vess_apounds) %>% 
-#   #Cluster Catch Compositions
-#   group_by(clust, dyear) %>% group_by(clust, dyear, group) %>%
-#     mutate(clust_group_hperc = sum(hpounds) / clust_hpounds,
-#            clust_group_aperc = sum(apounds) / clust_apounds) %>% as.data.frame -> ast
-
 #--------------------------------------------------------------------------------
 #Filter and save the plots    
 
-sub_clust_plot <- function(port, cut_point){
+sub_clust_plot <- function(port, cut_point,
+       targs = c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+                 'Longspine Thornyhead', "Lingcod"),
+       const = c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+                 'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')){
+  library(dplyr)
+  library(ggplot2)
   ast <- sub_clust(port = port, cut_point = cut_point)
   #Maps
   xlims <- c(floor(range(-c(ast$set_long, ast$up_long))[1]),
@@ -260,6 +184,7 @@ sub_clust_plot <- function(port, cut_point){
   pdf(width = 9, height = 7, file = paste0(filename, "_clusters.pdf"))
 
   for(ii in unique(ast$clust)){
+    # cat(ii, length(unique(ast$clust)), '\n')
     cc <- ii
     temp <- ast %>% filter(clust == cc)
     temp$dyear <- as.character(temp$dyear)
@@ -278,14 +203,21 @@ sub_clust_plot <- function(port, cut_point){
 
   dev.off()
 
+  # targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+  #   'Longspine Thornyhead', "Lingcod" )
+
+  # const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+  #   'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
 
   ###Barplots
   pdf(width = 9, height = 7, file = paste0(filename, '_barplots.pdf'))
 
   for(ii in unique(ast$clust)){
+    # cat(ii, length(unique(ast$clust)), '\n')
     cc <- ii
     temp <- ast %>% filter(clust == cc & species %in% c(targs, const)) %>% 
       distinct(dyear, species, clust_spp_hperc)
+    if(nrow(temp) == 0) next
     two <- ggplot(data = temp) + geom_bar(stat = 'identity', 
           aes(x = factor(species), y = clust_spp_hperc)) + facet_grid(~ dyear) + 
           theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
@@ -298,8 +230,38 @@ sub_clust_plot <- function(port, cut_point){
 
 }
 
+#--------------------------------------------------------------------------------
+#Loop through Ports saving plots
 
-sub_clust_plot(port = "MORRO BAY", cut_point = 0.15)
+part_wc_data %>% group_by(dport_desc) %>% summarize(ntows = length(trans_up_long), tot_h = 
+  sum(hpounds, na.rm = TRUE), tot_a = sum(apounds, na.rm = TRUE), lbs_per_tow = tot_h / ntows) %>% 
+  arrange(desc(ntows)) %>% as.data.frame -> ports
+
+#Try this with lapply for only two things
+lapply(ports[c(21, 22), 1], FUN = sub_clust_plot, cut_point = 0.15)
+
+#Plot things in parallel
+library(parallel)
+cl <- makeCluster(5)
+
+clusterExport(cl, c("sub_clust", "part_wc_data", "wc_data", "wc_map"))
+parLapply(cl, ports$dport_desc, sub_clust_plot, cut_point = 0.15)
+
+stopCluster(cl)
+# xx <- foreach(1:length(ports$dport_desc)) %dopar% {
+#   sub_clust_plot(port = ports$dport_desc[ii], cut_point = 0.15)
+# }
+
+# for(ii in 1:length(ports$dport_desc)){
+#   print(ii)
+#   sub_clust_plot(port = ports$dport_desc[ii], cut_point = 0.15)
+# }
+
+
+# Notes about things
+
+
+
 
 
 
