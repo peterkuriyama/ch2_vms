@@ -231,7 +231,7 @@ sub_clust_plot <- function(port, cut_point,
 }
 
 #--------------------------------------------------------------------------------
-#Loop through Ports saving plots
+#Loop through Ports saving plots in parallel
 
 part_wc_data %>% group_by(dport_desc) %>% summarize(ntows = length(trans_up_long), tot_h = 
   sum(hpounds, na.rm = TRUE), tot_a = sum(apounds, na.rm = TRUE), lbs_per_tow = tot_h / ntows) %>% 
@@ -248,6 +248,188 @@ clusterExport(cl, c("sub_clust", "part_wc_data", "wc_data", "wc_map"))
 parLapply(cl, ports$dport_desc, sub_clust_plot, cut_point = 0.15)
 
 stopCluster(cl)
+
+sub_clust_plot(port = 'ASTORIA', cut_point = 0.3)
+#--------------------------------------------------------------------------------
+#Calculate CV in pounds and maybe % compositions 
+#Find most selective (lowest CVs) vessels, clusters
+#Look into vessel catch compositions
+#Variability in trip compositions?
+
+#Define Target and Constraining Species
+targs <- c("Dover Sole", "Sablefish", "Shortspine Thornyhead", "Petrale Sole", 
+          'Longspine Thornyhead', "Lingcod")
+const <- c("Darkblotched Rockfish", "Pacific Ocean Perch", 'Canary Rockfish', 
+          'Bocaccio Rockfish', 'Yelloweye Rockfish', 'Cowcod Rockfish')
+
+xx <- sub_clust(port = 'ASTORIA', cut_point = 0.3)
+
+xx %>% group_by(drvid) %>% summarize(nclust = length(unique(clust))) %>% arrange(desc(nclust))
+
+##Calculate CVs by Cluster
+#Filter so that only target and constraining species are included
+xx %>% group_by(clust, species, dyear) %>% 
+  summarize(tow_hperc_cv = sd(tow_spp_hperc) / mean(tow_spp_hperc),
+    tow_hpound_cv = sd(hpounds) / mean(hpounds), tow_apound_cv = sd(apounds) / mean(apounds),
+    nvals = length(hpounds)) %>% 
+  filter(species %in% c(targs, const)) %>% as.data.frame %>% arrange(desc(nvals)) -> clust_cv
+
+#fit linear model and filter clusters that had the highest slopes
+clust_cv %>% group_by(clust, species) %>% 
+  filter(length(clust) > 1 & is.na(tow_hpound_cv) == FALSE) %>% 
+  arrange(dyear) %>% do({
+    mod <- lm(tow_hpound_cv ~ dyear, data = .)
+    slope <- mod$coefficients[2]
+    names(slope) <- NULL
+    data.frame(., slope)
+  }) %>% as.data.frame -> clust_cv
+
+qs <- quantile(unique(clust_cv$slope), na.rm = TRUE)
+
+#Plot slopes in the 25 percentile, these ones got better
+cv_down <- clust_cv %>% filter(slope <= qs[2])
+
+ggplot(dat = cv_down) + 
+  geom_point(aes(x = dyear, y = tow_hpound_cv, size = nvals)) + 
+  geom_line(aes(x = dyear, y = tow_hpound_cv, group = clust, colour = clust)) + 
+  facet_wrap(~ species)
+
+#Slopes above the 75 Percentile
+cv_up <- clust_cv %>% filter(slope >= qs[4])
+
+ggplot(dat = cv_up) + 
+  geom_point(aes(x = dyear, y = tow_hpound_cv, size = nvals)) + 
+  geom_line(aes(x = dyear, y = tow_hpound_cv, group = clust, colour = clust)) + 
+  facet_wrap(~ species) + theme_bw()
+
+hist(unique(clust_cv$slope), breaks = 30)
+clust_cv[clust_cv$slope > 1, ]
+
+#Find lowest cvs
+clust_cv %>% group_by(clust) %>% mutate(avg_cv = mean(tow_hpound_cv, na.rm = TRUE)) %>%
+  as.data.frame -> clust_cv
+clust_cv %>% filter(avg_cv <= 0.5)
+
+#Look at species-specific slopes in CVs
+ggplot(clust_cv) + geom_histogram(aes(x = slope)) + facet_wrap(~ species) + theme_bw() + 
+  geom_vline(xintercept = 0, col = 'red')
+
+#Species Specific CV in hpounds
+#Add in before or after catch shares as column
+clust_cv$when <- 'before'
+clust_cv[clust_cv$dyear >= 2011, 'when'] <- 'after'
+
+#Find median values before and after for each species
+clust_cv %>% group_by(species, when) %>% mutate(med_cv = median(tow_hpound_cv)) %>%
+  as.data.frame -> clust_cv
+clust_cv %>% select(species, when, med_cv) %>% distinct() %>% dcast(species ~ when) -> dd
+  dd %>% group_by(species) %>% mutate(diff = before - after)
+
+clust_cv$when <- as.factor(clust_cv$when)
+levels(clust_cv$when) <- c('before', 'after')
+
+#Plot vertically to visualize the changes
+pdf(width = 6, height = 24, file = 'figs/species_hpound_cv.pdf')
+print(ggplot(data = clust_cv) + 
+  geom_histogram(aes(x = tow_hpound_cv)) + coord_flip() +
+  facet_wrap(~ species + when, ncol = 2) + theme_bw() + 
+  geom_vline(aes(xintercept = med_cv, col = 'red'))
+)
+dev.off()  
+
+#--------------------------------------------------------------------------------
+#Calculate cvs for each species for individual
+wc_data %>% group_by(drvid, species, dyear) %>% 
+  summarize(tow_hperc_cv = sd(tow_spp_hperc) / mean(tow_spp_hperc),
+    tow_hpound_cv = sd(hpounds) / mean(hpounds), tow_apound_cv = sd(apounds) / mean(apounds),
+    nvals = length(hpounds)) %>% 
+  filter(species %in% c(targs, const)) %>% as.data.frame %>% arrange(desc(nvals)) -> vess_cv
+
+#fit linear model and filter clusters that had the highest slopes
+  #Do this on hpounds
+vess_cv %>% group_by(drvid, species) %>% 
+  filter(length(drvid) > 1 & is.na(tow_hpound_cv) == FALSE) %>% 
+  arrange(dyear) %>% do({
+    mod <- lm(tow_hpound_cv ~ dyear, data = .)
+    slope <- mod$coefficients[2]
+    names(slope) <- NULL
+    data.frame(., slope)
+  }) %>% as.data.frame -> vess_cv
+
+#find lowest cvs
+#lookt at species specific slopes in cvs
+#find median values before and after for each species
+
+
+
+
+ggplot(cvs) + geom_point(aes(x = dyear, y = tow_hpound_cv, size = nvals)) + 
+  geom_line(aes(x = dyear, y = tow_hpound_cv)) + 
+  facet_wrap(~ species)
+
+
+#Calculate CVs by vessel
+
+%>%
+  as.data.frame %>% ggplot() + geom_line(aes(x = dyear, y = tow_cv)) + facet_wrap(~ species)
+
+check$tow_spp_hperc
+
+check$trip_tow <- paste(check$trip_id, check$townum)
+
+#
+
+check %>% filter(species == 'Pacific Ocean Perch') -> pop
+
+#Tows that caught POP
+check %>% filter(trip_tow %in% pop$trip_tow) 
+
+xlims <- c(floor(range(-c(check$set_long, check$up_long))[1]),
+           ceiling(range(-c(check$set_long, check$up_long))[2]))
+
+ylims <- c(floor(range(c(check$set_lat, check$up_lat))[1]),
+           ceiling(range(c(check$set_lat, check$up_lat))[2]))
+
+wc_map + geom_segment(data = xx %>% filter(drvid == '511697'), aes(x = -set_long,
+  xend = -up_long, y = set_lat, yend = up_lat), arrow = arrow(length = unit(0.1, 'cm'))) + 
+  theme_bw() + facet_wrap(~ dyear) + scale_x_continuous(limits = xlims) + 
+  scale_y_continuous(limits = ylims) + facet_wrap(~ dyear)
+
+
+ geom_segment(data = temp, aes(x = -set_long, 
+                xend = -up_long, y = set_lat, 
+                yend = up_lat), arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + 
+                ggtitle(paste("cluster = ", cc, ",", "ntows = ", nrow(temp))) + 
+                scale_x_continuous(limits = xlims) + 
+                scale_y_continuous(limits = ylims) + 
+                facet_wrap(~ dyear)
+
+
+#--------------------------------------------------------------------------------
+#TO DO
+#Compare the amounts of pounds to records in catch IFQ database
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # xx <- foreach(1:length(ports$dport_desc)) %dopar% {
 #   sub_clust_plot(port = ports$dport_desc[ii], cut_point = 0.15)
 # }
@@ -265,9 +447,6 @@ stopCluster(cl)
 
 
 
-
- geom_bar(stat = 'identity', aes(x = factor(species), y = clust_hperc)) + 
-  facet_grid(~ clust) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 
 
@@ -437,93 +616,6 @@ ggplot(selective) + geom_line(aes(x = dyear, y = perc_selective, colour = specie
 
 
 
-#Pretty much uniform distribution
-ggplot(subset(check, species == 'Dover Sole')) + geom_histogram(aes(h_other_perc)) + 
-  facet_wrap(~ dyear)
-
-#still catching lots of other things
-ggplot(subset(check, species == 'Petrale Sole')) + geom_histogram(aes(h_other_perc)) + 
-  facet_wrap(~ dyear)
-
-ggplot(subset(check, species == 'Sablefish')) + geom_histogram(aes(h_other_perc)) + 
-  facet_wrap(~ dyear)
-
-
-#Plot the changes in ntows for each cluster over time
-ast_sum %>% filter(ntot > 10) %>% ggplot() + 
-  geom_line(aes(x = dyear, y = nn, color = clust, group = clust))
 
 
 
-
-
-###
-#Need to add cluster assignments into original data frame
-###
-
-
-
-
-unique(ast_sum$clust)
-
-#Plot the clusters around astoria
-
-#I think the number of tows went down after catch shares
-
-#--------------------------------------------------------------------------------
-
-#--------------------------------------------------------------------------------
-#Look at opportunities for single vessel
-#look at single vessel
-# temp <- subset(wc_data, drvid == "546053")
-
-
-
-#Convert longitudes to latitudes
-#trans for transformed
-
-#calculate euclidean distances and cluster
-#Filter unique tows for euclidean stuff
-temp1 %>% group_by(trip_id, ddate, drvid, townum) %>% filter(row_number() == 1) %>%
-  as.data.frame -> dd
-
-#66,785 unique tows
-
-distance <- dist(dd[, c('up_lat', 'set_lat', 'trans_set_long', 'trans_up_long')],
-  method = 'euclidean')
-
-
-
-
-
-
-#Cut the clusters based on a cut point
-
-y <- cutree(cluster.tree, h = 0.5)
-
-length(unique(y))
-
-dd$cluster <- y
-
-#Add this
-xx <- inner_join(temp1, dd[, c('trip_id', 'ddate', 'rdate', 'drvid', 'townum', 'cluster') ], 
-  by = c('trip_id', 'ddate', 'rdate', 'drvid', 'townum'))
-
-#Merge it back with the bigger data set
-#What did they catch, how much and where was it
-
-#look at cluster 1, the most common cluster
-clus <- subset(xx, cluster == 1)
-
-ggplot() + geom_segment(data = clus, aes(x = -set_long, xend = -up_long,
-  y = set_lat, yend = up_lat), 
-  arrow = arrow(length = unit(0.1, 'cm'))) + theme_bw() + facet_wrap(~ dyear)
-
-#Did 
-
-
-###Look at all the tow lines for this one vessel
-
-
-
-hist(clus$hpounds, )
