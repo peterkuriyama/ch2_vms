@@ -1,12 +1,9 @@
 #Fishing Styles, per Boonstra and Hentati-Sundberg
+setwd('/Users/peterkuriyama/School/Research/ch2_vms')
 
+source("ch2_vms_main.R")
 #--------------------------------------------------------------------------------
 #Format West Coast Map
-world_map <- map_data("world")
-wc_map <- states_map[states_map$region %in% c('USA', 'Canada'), ]
-wc_map <- ggplot() + geom_map(data = world_map, map = world_map, aes(x = long, y = lat, 
-    map_id = region), fill = 'gray') + 
-    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = NA, color = 'gray')
 
 #--------------------------------------------------------------------------------
 #VMS Analysis
@@ -14,90 +11,307 @@ load("data/nw_vms.Rdata")
 
 #--------------------------------------------------------------------------------
 #Add in unadjusted latitude and longitude points
-# nw.vms <- head(nw.vms)
-nw.vms$latitude <- gsub("\\.", "\\,", nw.vms$latitude)
-nw.vms$latitude <- gsub("\\\260", ".", nw.vms$latitude)
-nw.vms$latitude <- gsub("\\,", "", nw.vms$latitude)
+# wc.vms <- head(wc.vms)
+wc.vms <- nw.vms
+rm(nw.vms)
+wc.vms$latitude <- gsub("\\.", "\\,", wc.vms$latitude)
+wc.vms$latitude <- gsub("\\\260", ".", wc.vms$latitude)
+wc.vms$latitude <- gsub("\\,", "", wc.vms$latitude)
 
-nw.vms$longitude <- gsub("\\.", "\\,", nw.vms$longitude)
-nw.vms$longitude <- gsub("\\\260", ".", nw.vms$longitude)
-nw.vms$longitude <- gsub("\\,", "", nw.vms$longitude)
+wc.vms$longitude <- gsub("\\.", "\\,", wc.vms$longitude)
+wc.vms$longitude <- gsub("\\\260", ".", wc.vms$longitude)
+wc.vms$longitude <- gsub("\\,", "", wc.vms$longitude)
 
-nw.vms$longitude <- as.numeric(nw.vms$longitude)
-nw.vms$latitude <- as.numeric(nw.vms$latitude)
+wc.vms$longitude <- as.numeric(wc.vms$longitude)
+wc.vms$latitude <- as.numeric(wc.vms$latitude)
 
 #--------------------------------------------------------------------------------
 #Filter our outliers
 #Filter out VMS data that are too far away from the US West Coast
-outlier_ind <- which(nw.vms$longitude > -115 | nw.vms$longitude < -130)
+outlier_ind <- which(wc.vms$longitude > -115 | wc.vms$longitude < -130)
+# length(outlier_ind) / nrow(wc.vms) * 100 #17% of data is in alaska
 
-# length(outlier_ind) / nrow(nw.vms) * 100 #17% of data is in alaska
-
-outliers <- nw.vms[outlier_ind, ]
-nw.vms <- nw.vms[-outlier_ind, ]
-
-##Outliers
-# wc_map + geom_point(data = outliers, aes(x = lon, y = lat)) 
-
-##IFQS
-#Some of the outliers are fished on shorebased IFQ
-# ifqs <- outliers[which(outliers$sector_desc %in% unique(outliers$sector_desc)[c(2, 3, 6)]), ]
-
-# png(width = 12.9, height = 7.9, res = 200, file = 'figs/outlier_vms.png', units = 'in')
-# print(wc_map + scale_x_continuous(limits = c(-180, -117)) + 
-#       scale_y_continuous(limits = c(32, 60)) + 
-#       geom_point(data = ifqs, aes(x = lon, y = lat)) + facet_grid(~ sector_desc))
-# dev.off()
-
-# wc_map + scale_x_continuous(limits = c(-180, -117)) + 
-#       scale_y_continuous(limits = c(32, 60)) + 
-#       geom_point(data = ifqs, aes(x = lon, y = lat)) + facet_grid(~ sector_desc)
+outliers <- wc.vms[outlier_ind, ]
+wc.vms <- wc.vms[-outlier_ind, ]
 
 #OK to remove the outliers
 #--------------------------------------------------------------------------------
 #Filter and Change the names of the objects
-#Note that nw_vms is now filtered to remove outliers, nw.vms still has outliers      
-nw_vms_unfilt <- nw.vms
-nw_vms <- nw_vms_unfilt[-outlier_ind, ]
+#Note that wc_vms is now filtered to remove outliers, wc.vms still has outliers      
+wc_vms_unfilt <- wc.vms
+wc_vms <- wc_vms_unfilt[-outlier_ind, ]
 
 #Drop lat and lon columns because they're wrong
-nw_vms$lat <- NULL
-nw_vms$lon <- NULL
-nw_vms$speed <- as.numeric(nw_vms$speed)
+wc_vms$lat <- NULL
+wc_vms$lon <- NULL
+wc_vms$speed <- as.numeric(wc_vms$speed)
 
 #Also make sure to get rows with tow speed between 2 and 6
+sum(is.na(wc_vms$speed)) / nrow(wc_vms)
+wc_vms %>% filter(speed >= 2 & speed <= 6) -> wc_vms_fish #Names to have values that 
+  #are associated with actual tows. 
+
+#Look at proportion of tows in each sector
+unique(wc_vms_fish$sector_desc)
+wc_vms_fish %>% group_by(sector_desc) %>% summarize(perc = length(latitude) / 
+  nrow(wc_vms_fish))
+
+#Look at proportion of tows in each vessel
+wc_vms_fish %>% group_by(vessel_name) %>% summarize(perc = length(latitude) / 
+  nrow(wc_vms_fish)) %>% ggplot() + geom_histogram(aes(x = perc)) + theme_bw()
+
+#--------------------------------------------------------------------------------
+#Look at trend in number of vessels overall
+wc_vms_fish %>% group_by(year) %>% summarize(nvess = length(unique(vessel_name)))
+
+#What was proportion of vessel VMS Coverage?
+#Is there any way to combine the vessel locations to see if they match with the other records?
+
+#Read in vessel records from 2011 - 2014
+vess11 <- read.csv('data/vessels2011.csv', stringsAsFactors = FALSE)
+vess12 <- read.csv('data/vessels2012.csv', stringsAsFactors = FALSE)
+vess13 <- read.csv('data/vessels2013.csv', stringsAsFactors = FALSE)
+vess14 <- read.csv('data/vessels2014.csv', stringsAsFactors = FALSE)
+
+wc_vess <- rbind(vess11, vess12, vess13, vess14)
+names(wc_vess) <- tolower(names(wc_vess))
+wc_vess$vessel <- tolower(wc_vess$vessel)
+
+wc_vess %>% group_by(quota.year) %>% summarize(nvess = length(unique(vessel)))
+#So there are like 100 allocated vessels
+
+wc_vess %>% group_by(vessel, quota.year) %>% summarize(tc = sum(qp.balance)) %>% 
+  filter(tc <= 0) %>% as.data.frame %>% group_by(quota.year) %>% 
+  summarize(nvess = length(unique(vessel)))
+  
+#So there should be records from about 130 vessels and we only have records 
+  #for about 50
+
+#--------------------------------------------------------------------------------
+#Bin the data, maybe bin by sector also
+
+#Add in number of tows and number of sectors for each vessel and year combination
+wc_vms_fish %>% group_by(vessel_name, year) %>% mutate(ntows = length(speed)) %>% 
+  group_by(vessel_name) %>% mutate(nsect = length(unique(sector_desc))) %>% 
+  as.data.frame %>% arrange(desc(ntows)) -> wc_vms_fish
+   
+#Only Grumpy J, Island Enterprise, and Lisa Melinda fished in two sectors
+
+#------------------------------------------------------------
+#Visualize individual vessel bins
+
+#Look at Pacific Future for example
+vess <- subset(wc_vms_fish, vessel_name == 'Pacific Future')
+
+#Remove NA locations,
+xlims <- range(vess$longitude, na.rm = TRUE)
+xlims <- c(floor(xlims[1]), ceiling(xlims[2]))
+
+ylims <- range(vess$latitude, na.rm = TRUE)
+ylims <- c(floor(ylims[1]), ceiling(ylims[2]))
+
+wc_map + scale_x_continuous(limits = xlims) + scale_y_continuous(limits = ylims) + 
+  geom_point(data = vess, aes(x = longitude, y = latitude, colour = month)) + 
+  facet_wrap(~ year) 
+
+###Write function to process binned data
+#Bin by number of tows
+#Bin by number of start points, mid points, end points
+
+#Function to bin VMS points by year
+wc_vms_fish$year <- as.numeric(wc_vms_fish$year)
+
+bin_by_year <- function(data = wc_vms_fish, bw = c(0.0909, 0.11)){
+  
+  bh <- ggplot(data, aes(x = longitude, y = latitude, group = year)) +
+    stat_bin2d(binwidth = bw)
+
+  binned <- ggplot_build(bh)$data[[1]]
+  binned$unq <- paste(binned$xbin, binned$ybin)
+  binned$id <- 1:nrow(binned)
+
+  yrz <- data.frame(group = unique(binned$group), 
+                    year = unique(data$year)[order(unique(data$year))])
+  binned <- inner_join(binned, yrz, by = 'group')  
+
+  return(binned)
+}
+
+#Bin the data by year
+binned <- bin_by_year(data = wc_vms_fish)
+
+#Find number of tows in each year
+wc_vms_fish %>% group_by(year) %>% summarize(ntows = length(year))
+
+#filter to have years 2008, 2009, 2010 as before and 2011, 2012, 2013 as after
+#names for before and after
+binned <- binned %>% filter(year >= 2008 & year <= 2013)
+binned$when <- "before"
+binned[binned$year >= 2011, 'when'] <- 'after'
+
+#Fill in zeroes for areas that don't have tows in all years
+binned %>% group_by(unq) %>% mutate(nyear = length(unique(year))) %>%  
+  filter(nyear == 6) %>% as.data.frame -> high_sites
+
+binned %>% group_by(unq) %>% mutate(nyear = length(unique(year))) %>%  
+  filter(nyear < 6) %>% as.data.frame -> low_sites
+
+#Low sites are sites that don't have 6 years of data
+exp_sites <- vector('list', length(unique(low_sites$unq)))
+
+yrz <- 2008:2013
+
+for(ii in 1:length(unique(low_sites$unq))){
+  if(ii %% 100 == 0) print(ii)
+  zz <- subset(low_sites, unq == unique(low_sites$unq)[ii])
+  missing <- which(yrz %in% zz$year == FALSE)
+  to_add <- zz[rep(which(zz$year %in% yrz)[1], 
+      length(missing)), ]
+  to_add$year <- yrz[missing]
+  to_add$count <- 0
+  to_add$density <- 0
+
+  out <- rbind(zz, to_add)
+  out <- out[order(out$year), ]
+  exp_sites[[ii]] <- out
+}
+
+aa <- ldply(exp_sites)
+
+
+
+
+binned %>% filter(unq == '100 26')
+
+binned %>% group_by(unq) %>% do({
+  if(length(unique(year)) < 6) print('poop')
+})
+
+
+
+if(length(unique(year)) < 6) print('poop')
+
+
+
+binned %>% distinct(unq, when, avg_count) -> aa
+
+dcast(aa, unq ~ when)
+
+dcast(binned, year ~ when)
+
+
+#Calculate average number of tows before and after
+
+binned %>% group_by(unq, when) %>% mutate(avg_count = mean(count)) %>% 
+  as.data.frame -> binned
+
+binned
+
+
+binned %>% group_by(year) %>% summarize(ntows = length(year)) 
+
+
+#look at trends in VMS points in each site.
+ggplot(binned) + g(aes(x = year, y = count, group = unq)) + theme_bw()
+
+
+#Function to plot the tiles faceted by year
+plot_bin2d <- function(input){
+
+  browser()
+  xlims <- range(input$x)
+  xlims <- c(floor(xlims[1]), ceiling(xlims[2]))
+
+  ylims <- range(input$y)
+  ylims <- c(floor(ylims[1]), ceiling(ylims[2]))
+
+  wc_map + geom_tile(data = input, aes(x = x, y = y, fill = count)) + 
+    scale_fill_gradient2(low = 'blue', high = 'red') + 
+    scale_x_continuous(limits = xlims) + scale_y_continuous(limits = ylims) + 
+    facet_wrap(~ year)
+
+  print('done')
+}
+
+
+
+plot_bin2d(input = binned)
+
+wc_plot + geom_tile(data = subset(diff_plot_ba, legal == 'yes'), aes(x = x,
+  y = y, fill = diff)) + scale_fill_gradient2(low = 'blue', high = 'red') + 
+  theme(panel.border = element_blank(),
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+      panel.background = element_rect(fill = 'white'))      
+
+
+
+bh <- ggplot(wc_data_unique, aes(x = -long, y = lat, group = tow_year)) + 
+  stat_bin2d(binwidth = c(.0909, .11))
+
+
+
+
+
+#Quick look at these
+wc_vms_fish
+wc_vms_fishing %>% summarize()
+
 
 #--------------------------------------------------------------------------------
 #Axes to look at:
 #Speed, sector, month, year, 
 
-nw_vms %>% group_by(vessel_name, year) %>% summarise(nsector = length(unique(sector_desc))) %>%
+wc_vms %>% group_by(vessel_name, year) %>% summarise(nsector = length(unique(sector_desc))) %>%
   as.data.frame -> vess_sector
 
-vess_sector %>% filter(nsector == 2)
+vess_sector %>% filter(nsector > 1)
+
+
+#Look at vessels south of morro bay
+wc_vms %>% filter(latitude < 36 & latitude > 34.5) -> cen_cal
+
+#Find most active vessels
+cen_cal %>% group_by(vessel_name) %>% mutate(nyears = length(unique(year))) %>% 
+  as.data.frame -> cen_cal
+
+wc_map + ggplot() + geom_point(aes(x = longitude, y = latitude, colour = vessel_name)) + 
+  facet_wrap(~ year)
+
+
+cen_cal %>% group_by()
+
+
+unique(south$vessel_name)
+
 
 #Pretty much every vessel fished in one sector with the exception of a couple
+
+
 #grumpy j, isl
-grump <- nw_vms %>% filter(vessel_name == 'Grumpy J' & speed != 0)
+grump <- wc_vms %>% filter(vessel_name == 'Grumpy J' & speed != 0)
 
 # to_plot <- grump %>% filter(speed != 0 & sector_desc == unique(grump$sector_desc)[2])
 
+
+
+
 wc_map + scale_x_continuous(limits = range(grump$longitude)) + 
   scale_y_continuous(limits = range(grump$latitude)) + 
-  geom_point(data = grump, aes(x = longitude, y = latitude)) +
-  facet_grid(month ~ year)
+  geom_point(data = grump, aes(x = longitude, y = latitude)) 
++
+#   facet_grid(month ~ year)
 
 #--------------------------------------------------------------------------------
 #Calculate centroid of distributions for each vessel to quantify
 
 #Calculate this by year
-nw_vms %>% group_by(year, vessel_name, sector_desc) %>% summarise(lon_mean = mean(longitude, na.rm = TRUE),
+wc_vms %>% group_by(year, vessel_name, sector_desc) %>% summarise(lon_mean = mean(longitude, na.rm = TRUE),
   lat_mean = mean(latitude, na.rm = TRUE), lon_med = median(longitude, na.rm = TRUE), 
-  lat_med = median(latitude, na.rm = TRUE)) %>% as.data.frame -> nw_vms_centroid
-nw_vms_centroid$year <- as.numeric(nw_vms_centroid$year)
+  lat_med = median(latitude, na.rm = TRUE)) %>% as.data.frame -> wc_vms_centroid
+wc_vms_centroid$year <- as.numeric(wc_vms_centroid$year)
 
 #Fit linear model to find the characterize average changes in effort by sector and vessel
-nw_vms_centroid %>% 
+wc_vms_centroid %>% 
   group_by(sector_desc, vessel_name) %>% do({
     mod_lon <- lm(lon_mean ~ year, data = .)
     slope_lon <- coef(mod_lon)[2]
@@ -122,7 +336,7 @@ hist(unique(slopes$slope_lon))
 
 
 #Create plot that has raw points and the averaged points
-alex <- subset(nw_vms, vessel_name == 'Alex (Faria)' & speed)
+alex <- subset(wc_vms, vessel_name == 'Alex (Faria)' & speed)
 temp <- subset(slopes, vessel_name == "Alex (Faria)")
 
 wc_map + geom_point(data = temp, aes(x = lon_mean, y = lat_mean, colour = year)) +
@@ -164,7 +378,7 @@ grump %>% filter(month == '09' & year == 2014) %>%
 
 #--------------------------------------------------------------------------------
 #Look at paths of specific vessels
-speeds <- subset(nw_vms, speed >= 2 & speed <= 6)
+speeds <- subset(wc_vms, speed >= 2 & speed <= 6)
 
 vess <- unique(speeds$vessel_name)
 
@@ -216,67 +430,85 @@ wc_map + scale_x_continuous(limits = c(-126, -123)) + scale_y_continuous(limits 
 
 
 
-holy_bull <- subset(nw_vms, vessel_name == 'Holy Bull')
+holy_bull <- subset(wc_vms, vessel_name == 'Holy Bull')
 wc_map + scale_x_continuous(limits = c(-125, -123)) + scale_y_continuous(limits = c(40, 42)) + 
   geom_point(data = holy_bull, aes(x = longitude, y = latitude, group = year,
     color = year)) + 
   facet_wrap(~ month)
 
 
+#--------------------------------------------------------------------------------
+##SCRAPS
 
-hist(nw_vms$latitude)
-hist(nw_vms$longitude)
-range(nw_vms$longitude)
+# hist(wc_vms$latitude)
+# hist(wc_vms$longitude)
+# range(wc_vms$longitude)
 
-check <- nw_vms[which(nw_vms$longitude < -130), ]
+# check <- wc_vms[which(wc_vms$longitude < -130), ]
 
-wc_map + scale_x_continuous(limits = c(-140, -117)) + 
-      scale_y_continuous(limits = c(32, 60)) + 
-      geom_point(data = check, aes(x = longitude, y = latitude))
-
-
-
-
-
-outliers <- (nw.vms[which(nw.vms$longitude > 0), ])
-
-
-nrow(outliers) / nrow(nw.vms) * 100
-
-
-#Filter out VMS data from Alaska
-ak_index <- which(nw.vms$longitude < -140)
-
-
-
-hist(nw.vms$longitude, breaks = 30)
-hist(nw.vms[ak_index, 'longitude'])
-length(ak_index)
-
-
-ak_vms <- 
-nw.vms[which(nw.vms$longitude < -130)]
-
-ak
+# wc_map + scale_x_continuous(limits = c(-140, -117)) + 
+#       scale_y_continuous(limits = c(32, 60)) + 
+#       geom_point(data = check, aes(x = longitude, y = latitude))
 
 
 
 
-states_map <- map_data("state")
-wc_map <- states_map[states_map$region %in% c('california', 'oregon', 'washington'), ]
+
+# outliers <- (wc.vms[which(wc.vms$longitude > 0), ])
 
 
-temp <- subset(nw.vms, year == "2012" & month == "02")
+# nrow(outliers) / nrow(wc.vms) * 100
+
+
+# #Filter out VMS data from Alaska
+# ak_index <- which(wc.vms$longitude < -140)
+
+
+
+# hist(wc.vms$longitude, breaks = 30)
+# hist(wc.vms[ak_index, 'longitude'])
+# length(ak_index)
+
+
+# ak_vms <- 
+# wc.vms[which(wc.vms$longitude < -130)]
+
+# ak
 
 
 
 
-temp$latitude <- as.numeric(temp$latitude)
-temp$longitude <- as.numeric(temp$longitude)
+# states_map <- map_data("state")
+# wc_map <- states_map[states_map$region %in% c('california', 'oregon', 'washington'), ]
 
-ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat, 
-    map_id = region), fill = 'gray') + 
-    geom_polygon(data = wc_map, aes(x = long, y = lat), fill = NA, color = 'gray') + 
-    # coord_cartesian(xlim = c(-125, -117.3)) + 
-    geom_point(data = temp, aes(x = longitude, y = latitude))
 
+# temp <- subset(wc.vms, year == "2012" & month == "02")
+
+
+
+
+# temp$latitude <- as.numeric(temp$latitude)
+# temp$longitude <- as.numeric(temp$longitude)
+
+# ggplot() + geom_map(data = wc_map, map = wc_map, aes(x = long, y = lat, 
+#     map_id = region), fill = 'gray') + 
+#     geom_polygon(data = wc_map, aes(x = long, y = lat), fill = NA, color = 'gray') + 
+#     # coord_cartesian(xlim = c(-125, -117.3)) + 
+#     geom_point(data = temp, aes(x = longitude, y = latitude))
+
+##Outliers
+# wc_map + geom_point(data = outliers, aes(x = lon, y = lat)) 
+
+##IFQS
+#Some of the outliers are fished on shorebased IFQ
+# ifqs <- outliers[which(outliers$sector_desc %in% unique(outliers$sector_desc)[c(2, 3, 6)]), ]
+
+# png(width = 12.9, height = 7.9, res = 200, file = 'figs/outlier_vms.png', units = 'in')
+# print(wc_map + scale_x_continuous(limits = c(-180, -117)) + 
+#       scale_y_continuous(limits = c(32, 60)) + 
+#       geom_point(data = ifqs, aes(x = lon, y = lat)) + facet_grid(~ sector_desc))
+# dev.off()
+
+# wc_map + scale_x_continuous(limits = c(-180, -117)) + 
+#       scale_y_continuous(limits = c(32, 60)) + 
+#       geom_point(data = ifqs, aes(x = lon, y = lat)) + facet_grid(~ sector_desc)
